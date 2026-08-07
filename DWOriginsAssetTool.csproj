@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Authors>PieceMetal</Authors>
+    <Description>真三国无双：起源 G1 系列资源浏览、预览与 FBX 导出工具</Description>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
@@ -8,14 +13,25 @@
     <AssemblyName>DWOriginsAssetTool</AssemblyName>
     <RootNamespace>DWOriginsAssetTool</RootNamespace>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\app-icon.ico" />
     <Resource Include="Assets\app-icon.png" />
     <None Include="Assets\create-icon.ps1" />
-    <None Include="Assets\blender_export.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\blender_export.py" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BCnEncoder.Net" Version="2.2.1" />
   </ItemGroup>
+  <Target Name="RemovePublishSymbols" AfterTargets="Publish">
+    <Delete Files="@(ResolvedFileToPublish-&gt;WithMetadataValue('Extension', '.pdb')-&gt;'%(FullPath)')" />
+    <Delete Files="$([System.IO.Directory]::GetFiles('$(PublishDir)', '*.pdb', System.IO.SearchOption.TopDirectoryOnly))" />
+  </Target>
 </Project>

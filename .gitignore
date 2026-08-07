@@ -2,6 +2,9 @@
 bin/
 obj/
 publish*/
+artifacts/
+DWOriginsAssetTool_Acceptance_*/
+DWOriginsAssetTool_ReleaseCandidate_*/
 
 # Generated exports and unpacked game resources
 DWOrigins_Exports/

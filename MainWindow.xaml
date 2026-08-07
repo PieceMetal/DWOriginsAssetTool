@@ -126,7 +126,7 @@
               <CheckBox x:Name="CameraGizmoCheck" Content="显示动画摄像机" Click="CameraGizmo_Changed" IsEnabled="False" ToolTip="自由镜头下显示动画摄像机的位置、朝向和视锥"/>
               <CheckBox x:Name="CameraTrajectoryCheck" Content="镜头轨迹" Click="CameraTrajectory_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="自由镜头下显示整段摄像机运动路径；绿色为起点，红色为终点，黄色为当前帧"/>
               <CheckBox x:Name="CameraDataCheck" Content="镜头数据" Click="CameraData_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="在视口实时显示当前动作镜头的机位、目标、FOV、景别距离和速度"/>
-              <CheckBox x:Name="WeaponCheck" Content="显示配件" Click="WeaponCheck_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="在配件编辑器中添加并设置独立配件模型"/>
+              <CheckBox x:Name="WeaponCheck" Content="显示武器" Click="WeaponCheck_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="显示或隐藏快速预览加载的武器"/>
               <TextBlock x:Name="PreviewSummary" Text="尚未加载资源" Foreground="{StaticResource MutedBrush}" Margin="18,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
           </StackPanel>
@@ -179,13 +179,16 @@
             </Border>
             <Border x:Name="PlaybackOverlay" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="108,0,12,12" Padding="8,7" Background="#E018202B" BorderBrush="#536174" BorderThickness="1" CornerRadius="5" Visibility="Collapsed">
               <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <Button x:Name="PlayButton" Content="▶" Click="PlayAnimation_Click" IsEnabled="False" Width="36" Height="30" Padding="0" Margin="0,0,8,0"/>
                 <ComboBox x:Name="CameraModeCombo" Grid.Column="1" Width="142" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed" Margin="0,0,8,0">
                   <ComboBoxItem Content="自由镜头"/><ComboBoxItem x:Name="LinkedCameraModeItem" Content="无动画镜头"/>
                 </ComboBox>
                 <Slider x:Name="AnimationSlider" Grid.Column="2" Minimum="0" Maximum="1" Value="0" IsEnabled="False" IsMoveToPointEnabled="True" ValueChanged="AnimationSlider_ValueChanged" PreviewMouseLeftButtonDown="AnimationSlider_PreviewMouseLeftButtonDown"/>
                 <TextBlock x:Name="TimelineText" Grid.Column="3" Text="0.00 / 0.00 s" Foreground="#9CDCFE" VerticalAlignment="Center" MinWidth="105" TextAlignment="Right" Margin="8,0,0,0"/>
+                <Border Grid.Column="4" Background="#111923" BorderBrush="#3A485C" BorderThickness="1" CornerRadius="5" Margin="10,0,0,0" Padding="7,0" Width="78" Height="30" VerticalAlignment="Center" ToolTip="动画实际播放帧率，目标 60 FPS">
+                  <TextBlock x:Name="PlaybackFpsText" Text="-- FPS" Foreground="#8F9BAD" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="NoWrap" VerticalAlignment="Center"/>
+                </Border>
               </Grid>
             </Border>
           </Grid>
@@ -214,16 +217,68 @@
                   <Border Style="{StaticResource CardStyle}" Background="#111821" Padding="12">
                     <StackPanel>
                       <TextBlock Text="角色" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
-                      <ComboBox x:Name="QuickCharacterBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickCharacter_Changed" IsEnabled="False" Margin="0,0,0,9"/>
-                      <TextBlock Text="默认武器" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
-                      <ComboBox x:Name="QuickWeaponBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickWeapon_Changed" IsEnabled="False" Margin="0,0,0,9"/>
+                      <ComboBox x:Name="QuickCharacterBox" SelectionChanged="QuickCharacter_Changed" IsEnabled="False" Margin="0,0,0,9">
+                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <TextBlock Text="武器" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                      <ComboBox x:Name="QuickWeaponBox" SelectionChanged="QuickWeapon_Changed" IsEnabled="False" Margin="0,0,0,9">
+                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                      </ComboBox>
                       <TextBlock Text="动画" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
-                      <ComboBox x:Name="QuickAnimationBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickAnimation_Changed" IsEnabled="False" Margin="0,0,0,10"/>
+                      <Grid Margin="0,0,0,10">
+                        <ComboBox x:Name="QuickAnimationBox" SelectionChanged="QuickAnimation_Changed" IsEnabled="False" Margin="0">
+                          <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="请选择动画" Foreground="#7F8C9F" Margin="11,0,34,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedItem, ElementName=QuickAnimationBox}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                      </Grid>
                       <Button x:Name="LoadQuickPreviewButton" Content="加载快捷预览" Click="LoadQuickPreview_Click"
                               Style="{StaticResource AccentButtonStyle}" IsEnabled="False" HorizontalAlignment="Stretch" Margin="0"/>
                     </StackPanel>
                   </Border>
                   <TextBlock x:Name="QuickPreviewHint" Text="扫描完成后可按角色、武器和动作快速预览。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"/>
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem Header="镜头预览" Style="{StaticResource InspectorTabItemStyle}">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12,14">
+                  <TextBlock Text="游戏镜头预览" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,10"/>
+                  <Border Style="{StaticResource CardStyle}" Background="#111821" Padding="12">
+                    <StackPanel>
+                      <TextBlock Text="固定镜头动作" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                      <Grid Margin="0,0,0,12">
+                        <ComboBox x:Name="QuickCameraActionBox" SelectionChanged="QuickCameraAction_Changed" IsEnabled="False">
+                          <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="请选择镜头动作" Foreground="#7F8C9F" Margin="11,0,34,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedItem, ElementName=QuickCameraActionBox}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                      </Grid>
+                      <TextBlock Text="角色模型" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                      <TextBlock x:Name="CameraPreviewCharacterText" Text="未选择" Foreground="#D7E1ED" Margin="0,3,0,10" TextWrapping="Wrap"/>
+                      <TextBlock Text="角色动画" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                      <TextBlock x:Name="CameraPreviewAnimationText" Text="未选择" Foreground="#D7E1ED" Margin="0,3,0,10" TextWrapping="Wrap"/>
+                      <TextBlock Text="绑定镜头" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                      <TextBlock x:Name="CameraPreviewCameraText" Text="未选择" Foreground="#D7E1ED" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                  </Border>
+                  <TextBlock x:Name="CameraPreviewHint" Text="选择镜头动作后会自动切换并播放固定的角色模型、角色动画和镜头。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"/>
                 </StackPanel>
               </ScrollViewer>
             </TabItem>
@@ -265,7 +320,7 @@
                 <TextBlock Grid.Row="2" Text="G1M 未提供可验证的字符串骨骼名，因此按原始全局骨骼编号显示；L 为模型局部编号。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11"/>
               </Grid>
             </TabItem>
-            <TabItem Header="配件编辑器" Style="{StaticResource InspectorTabItemStyle}">
+            <TabItem Header="配件编辑器" Style="{StaticResource InspectorTabItemStyle}" Visibility="Collapsed">
               <Grid Margin="10,12">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                 <StackPanel>
@@ -306,6 +361,25 @@
 
           <Border Grid.Row="2" Background="#141B25" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="11">
             <StackPanel>
+              <Border Background="#111821" BorderBrush="#334257" BorderThickness="1" CornerRadius="7" Padding="10" Margin="0,0,0,9">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Ellipse x:Name="BlenderStatusDot" Width="8" Height="8" Fill="#E5AD43" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Blender 导出环境" FontWeight="SemiBold"/>
+                      <TextBlock x:Name="BlenderStatusText" Text="正在检测…" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0"/>
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock x:Name="BlenderPathText" Text="FBX 导出需要 Blender" Foreground="#8391A4" FontSize="9" TextTrimming="CharacterEllipsis" Margin="16,6,0,8" ToolTipService.ShowDuration="15000"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Button x:Name="BlenderLocationButton" Content="选择程序" Click="BlenderLocation_Click" Margin="0,0,3,0" Padding="5,6" FontSize="10"/>
+                    <Button x:Name="BlenderSteamButton" Grid.Column="1" Content="Steam 安装" Click="OpenBlenderSteam_Click" Margin="3,0" Padding="5,6" FontSize="10"/>
+                    <Button Grid.Column="2" Content="官网下载" Click="OpenBlenderWebsite_Click" Margin="3,0,0,0" Padding="5,6" FontSize="10"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
               <Border x:Name="ExportProgressPanel" Visibility="Collapsed" Background="#182332" BorderBrush="#33465D" BorderThickness="1" CornerRadius="7" Padding="9" Margin="0,0,0,8">
                 <StackPanel>
                   <TextBlock x:Name="ExportProgressText" Text="准备导出" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,5"/>

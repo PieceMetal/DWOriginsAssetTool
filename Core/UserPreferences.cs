@@ -7,6 +7,7 @@ internal static class UserPreferences
     private sealed class PreferenceData
     {
         public bool HideStartupGuide { get; set; }
+        public string BlenderPath { get; set; } = "";
     }
 
     private static readonly string SettingsPath = Path.Combine(
@@ -16,33 +17,50 @@ internal static class UserPreferences
 
     public static bool HideStartupGuide
     {
-        get
-        {
-            try
-            {
-                if (!File.Exists(SettingsPath)) return false;
-                return JsonSerializer.Deserialize<PreferenceData>(File.ReadAllText(SettingsPath))?.HideStartupGuide == true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        get => Read().HideStartupGuide;
     }
+
+    public static string BlenderPath => Read().BlenderPath;
 
     public static void SetHideStartupGuide(bool value)
     {
         try
         {
-            var directory = Path.GetDirectoryName(SettingsPath)!;
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(
-                new PreferenceData { HideStartupGuide = value },
-                new JsonSerializerOptions { WriteIndented = true }));
+            var data = Read();
+            data.HideStartupGuide = value;
+            Write(data);
         }
         catch
         {
             // A read-only user profile must not prevent the tool from starting.
         }
+    }
+
+    public static void SetBlenderPath(string value)
+    {
+        var data = Read();
+        data.BlenderPath = value;
+        Write(data);
+    }
+
+    private static PreferenceData Read()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return new();
+            return JsonSerializer.Deserialize<PreferenceData>(File.ReadAllText(SettingsPath)) ?? new();
+        }
+        catch { return new(); }
+    }
+
+    private static void Write(PreferenceData data)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(data,
+                new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
     }
 }

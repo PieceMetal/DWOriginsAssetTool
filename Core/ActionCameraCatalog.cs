@@ -17,16 +17,6 @@ public static class ActionCameraCatalog
     private const uint CameraAnimationDataType = 0xadc35ba3;
     private const uint CameraMotionWrapperType = 0x3b6f1dab;
     private const uint CameraAnimationDataProperty = 0xc94db05f; // CameraAnimationDataObjectNameHash
-    // A small number of weapon actions point at a short camera segment in the
-    // direct KIDS node, while the shipped full-length action camera is stored
-    // separately. These pairs are verified by matching their in-game action
-    // duration and the camera target path against the animated actor root.
-    private static readonly IReadOnlyDictionary<uint, uint> FullActionCameraOverrides =
-        new Dictionary<uint, uint>
-        {
-            [0x8b508abf] = 0x0e3329d3,
-            [0x97e98040] = 0x55499930
-        };
 
     public static IReadOnlyDictionary<string, Binding> Build(string gameRoot)
     {
@@ -42,7 +32,10 @@ public static class ActionCameraCatalog
         {
             if (durationCache.TryGetValue(id, out var value)) return value;
             if (!animationPaths.TryGetValue(id, out var path)) return float.NaN;
-            try { value = G1Parsers.ReadAnimationClip(path).Info.Duration; }
+            // Catalog construction only needs the authored duration. Reading
+            // the full G2A payload here can reject an otherwise valid graph
+            // binding when a track variant is not needed by the previewer.
+            try { value = G1Parsers.ReadAnimation(path).Duration; }
             catch { value = float.NaN; }
             durationCache[id] = value;
             return value;
@@ -77,18 +70,6 @@ public static class ActionCameraCatalog
                     }
                 }
             }
-        }
-        foreach (var (animationId, cameraId) in FullActionCameraOverrides)
-        {
-            if (!animationPaths.TryGetValue(cameraId, out var cameraPath)) continue;
-            if (!animationPaths.ContainsKey(animationId) ||
-                !SameDuration(Duration(animationId), Duration(cameraId)))
-                continue;
-            var key = $"{animationId:x8}";
-            var previous = result.GetValueOrDefault(key);
-            result[key] = new(key, $"{cameraId:x8}", cameraPath,
-                previous?.ActionObjectId ?? "verified", previous?.CameraObjectId ?? "verified",
-                $"本体完整动作镜头：{key} → {cameraId:x8}.g1a（与人物动作同为 4.90 秒；镜头目标轨迹已核对）");
         }
         return result;
     }

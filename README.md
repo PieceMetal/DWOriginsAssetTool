@@ -1,86 +1,99 @@
 # 真三国无双：起源 资源工作台
 
-面向 Steam PC 版《真三国无双：起源》的本地资源浏览、分类、预览和导出工具，解析对象是 Koei Tecmo 的 G1 系列格式。
+面向 Windows 与 Steam PC 版《真三国无双：起源》的本地资源浏览、分类、预览和导出工具，解析对象是 Koei Tecmo 的 G1 系列格式。
 
-仓库仅包含工具源码，不包含游戏本体、解包资源或导出资源。使用者需要自行合法拥有 Steam PC 版游戏。
+项目定位是研究、预览和导出。它不包含游戏本体、解包资源或导出资源，也不提供游戏资源传播服务。
 
-## 快速开始
+## [⬇ 下载 v1.0.0（Windows x64）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool-v1.0.0-win-x64.zip)
 
-1. 启动工具，阅读首次启动时显示的使用说明。
-2. 点击顶部高亮的“选择游戏目录”。
-3. 选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录。
-4. 扫描完成后，可从左侧目录树浏览资源，或在右侧按“角色 / 默认武器 / 动画”快捷预览。
+## 安装
+
+1. 下载并解压 ZIP；压缩包内只有 `DWOriginsAssetTool.exe`。
+2. 将 EXE 放到可写目录运行。程序会在同级自动建立导出文件夹。
+3. 首次启动后点击高亮的“选择游戏目录”，选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录。
+4. 模型、动画和镜头 FBX 导出需要安装 [Blender](https://store.steampowered.com/app/365670/Blender/)；工具会自动检测 Steam 版，也可以手动选择 `blender.exe`。
+
+当前版本：`v1.0.0`
+
+## v1.0.0 功能
+
+- 直接扫描游戏目录，并以目录树浏览模型、动画、骨架、贴图、材质、碰撞、FData 包和视频资源。
+- 原生解析 `PDRK/IDRK0000` FData，支持单包及筛选结果批量解包，并按资源类型、资源域和游戏本体动作表恢复目录。
+- 从 KIDS 对象数据库恢复正式对象名称、角色动作归属和武器动作集，不依赖外部 FBX 文件夹分类。
+- 解析 G1M/G1MX 模型、G1MS 骨架、G1A/G2A 动画、骨骼调色板、蒙皮索引与权重。
+- 60 FPS 动画预览，支持播放、暂停、时间轴拖动、实时帧率、实体/线框/混合显示和骨骼树。
+- 效果预览器可自由选择角色、武器和动画；武器保持为独立模型并自动挂到人物装备骨骼。
+- 独立镜头预览器按游戏本体固定角色模型、角色动画和镜头；已确认 124 组动作镜头关联。
+- 支持自由镜头、动画镜头、摄像机位置示意、镜头轨迹与实时 FOV/位置/速度数据。
+- 通过用户安装的 Blender 导出 UE 与 3ds Max 可用的二进制 FBX。
+- 发布包为单个自包含 EXE，Blender 转换脚本已内嵌，不需要单独安装组件。
+
+## 使用方法
+
+1. 启动工具并阅读首次显示的使用说明。
+2. 选择游戏目录并等待资源扫描完成。
+3. 从左侧目录树选择资源，或在右侧“效果预览器”自由组合角色、武器和动画。
+4. 在“镜头预览”中选择固定镜头动作；工具会自动加载对应角色、默认武器、动画和镜头并立即播放。
+5. 使用右侧导出区域分别导出角色模型、武器模型、角色动画或镜头 FBX。
 
 如果游戏目录已有 `File/ASSET/FDataPackage/Dev/fdata_out`，工具会直接读取，无需再次解包。只有安装目录仅有 FData 包、没有展开资源时，模型和动画预览才需要先解包。
 
-## 已实现
+## FBX 导出说明
 
-- 扫描游戏 `File` 目录，支持 20 万级资源库；分页、类型、资源域和文本筛选。
-- 原生解析 `PDRK/IDRK0000` FData，支持单包和筛选结果批量解包；大资源的多段 Zlib 流会自动合并。
-- 分类模型 (`G1M/G1MX`)、动画 (`G1A/G2A`)、骨架 (`G1S/G2S/RIGBIN`)、贴图 (`G1T/KTID`)、材质、碰撞、FData 包和视频。
-- 通过文件头校验关键资源，不只依赖扩展名。
-- 解析本游戏样本中的 `G1M_0039` / `G1MG_0045`（文件字节中显示为 `9300` / `5400`）：分块、包围盒、材质、顶点缓冲、索引缓冲和子网格。
-- 模型线框预览：旋转、缩放、视角复位。
-- 视口交互与 RE 解包工具一致：左键环绕、右键平移、中键平移、Alt+中键环绕、滚轮缩放；空白区域也可操作。
-- 模型 OBJ 几何导出。
-- 解析 `G1A_0042` 动画时长、骨骼轨道和动画类型，并提供轨道概览。
-- 解析模型内部 G1MS 骨架；兼容曲线布局的 G1A 可播放、暂停和拖动真实骨骼动画，黄色显示已映射轨道。
-- 解析 G1MG 骨骼调色板、顶点骨骼索引与权重；动画播放时通过 CPU 蒙皮驱动模型网格。
-- 支持当前样本中的 G1A 曲线 opcode `2`、`6` 和《起源》新增的 `0x66` 九通道根运动布局（缩放、指数旋转、位移）。
-- 通过 Steam 版 Blender 的官方 FBX 导出器生成标准二进制 FBX：骨骼模型（网格、蒙皮与 Bind Pose）、UE 动画文件、3ds Max 直接检查用的“模型＋动画”预览文件，以及独立动作镜头 FBX。
-- 支持扩展名为 G1A、文件头为 `_A2G0400` 的 G2A 量化动画：读取 60 FPS、帧长、压缩骨骼表和 32 字节三次曲线块。
-- 旧版/占位 G1A 仍会列出；无法验证的布局只显示元数据，不会伪造关键帧。
-- 按 `资源类型/资源域` 分类复制当前筛选结果，同时生成 `manifest.json`。
+- “导出模型 FBX”输出角色模型；当前预览已加载武器时，会在同目录额外输出一个独立武器模型 FBX，不会合并两者。
+- “导出角色动画 FBX”只包含骨骼层级与动画曲线，不包含人物网格。
+- “导出镜头动画 FBX”只输出摄像机动画，并生成 JSON/HTML 镜头参数报告，不重复导出角色或武器。
+- 模型与动画使用相同骨架层级；Blender 的转换容器会命名为 `Armature`，避免 UE 将模型名识别成额外根骨骼。
+- 动画按 60 FPS 烘焙；单位在 G1、glTF、Blender 和 UE 之间统一换算。
 
-## FData 说明
+### Unreal Engine
 
-当前安装目录中的 `.fdata` 为 `PDRK/IDRK` 压缩容器。工具会读取 IDRK 资源 ID、记录边界、压缩尺寸与原始尺寸，解开连续的 16 KiB Zlib 数据块，并按文件头和已知哈希映射恢复扩展名。
+1. 导入角色模型 FBX，创建 Skeletal Mesh 与 Skeleton。
+2. 单独导入武器模型 FBX，并按需要附加到人物装备插槽。
+3. 导入角色动画 FBX 时关闭 `Import Mesh`，并选择角色模型已经创建的 Skeleton。
+4. 在 Sequencer 中选择 Cine Camera Actor，再导入镜头 FBX。
 
-每个包输出独立清单，记录资源 ID、源偏移、输出路径、大小和 SHA-256；不会修改游戏文件。
+### 3ds Max
 
-## 构建运行
+先导入角色模型 FBX，再把角色动画 FBX 加载到同一骨架。武器模型是独立 FBX，可单独导入和约束。
 
-需要 .NET 8 SDK 或更高版本：
+## 输出目录
 
-```powershell
-dotnet run --project .\DWOriginsAssetTool.csproj
-```
-
-发布单文件 Windows x64 版本：
-
-```powershell
-dotnet publish .\DWOriginsAssetTool.csproj -c Release -r win-x64 --self-contained true
-```
-
-## FBX 导入
-
-- **Unreal Engine**：先导出并导入“当前模型 FBX”作为 Skeletal Mesh；再导出“角色动画 FBX”，导入时选择该 Skeletal Mesh 的 Skeleton、关闭 `Import Mesh`。这样动画不会重复创建网格。
-- **3ds Max**：先导入模型 FBX，再将角色动画 FBX 加载到同一骨架；工具导出的两份文件保持 UE 标准分离流程。
-- 工具会自动寻找 `Steam\steamapps\common\Blender\blender.exe`；FBX 由 Blender 写出，保留骨架层级、顶点权重、绑定姿势，并以 60 FPS 烘焙动画。
-- 单位按游戏本体处理：G1M/G1A 的长度单位为厘米，进入 glTF/Blender 时自动换算为米，最终 FBX 导入 UE 后角色高度保持正确，不会出现 100 倍放大。
-
-## 输出约定
-
-工具默认以 RE 解包工具的方式，在 EXE 同级自动建立 `DWOrigins_Exports`，不把导出文件散落到游戏目录：
+程序会在 EXE 同级建立 `DWOrigins_Exports`：
 
 ```text
 DWOriginsAssetTool.exe
 └─ DWOrigins_Exports/
-   ├─ Model/       # 当前模型 FBX、OBJ
-   ├─ Animation/   # UE 用纯角色动画 FBX
+   ├─ Model/       # 角色模型、独立武器模型和 OBJ
+   ├─ Animation/   # 无人物网格的角色动画 FBX
    ├─ Camera/      # 镜头 FBX 与 JSON/HTML 参数报告
-   └─ Resources/   # 资源列表的分类导出与 manifest.json
+   └─ Resources/   # 分类资源与 manifest.json
 ```
 
-分类导出不会修改游戏文件，结构如下：
+解包和分类导出不会修改游戏文件。
 
-```text
-目标目录/
-├─ Model/<资源域>/*.g1m
-├─ Animation/<资源域>/*.g1a
-├─ Skeleton/<资源域>/*
-├─ Texture/<资源域>/*
-└─ manifest.json
+## 源码构建
+
+环境要求：Windows 10/11、.NET 8 SDK。只有导出 FBX 时需要 Blender。
+
+```powershell
+git clone https://github.com/PieceMetal/DWOriginsAssetTool.git
+cd DWOriginsAssetTool
+dotnet build -c Release
+dotnet run
 ```
 
-仅处理你合法拥有的游戏文件；导出的版权资源请勿传播。
+发布 Windows x64 单文件版本：
+
+```powershell
+dotnet publish -c Release
+```
+
+## 第三方组件
+
+- [BCnEncoder.NET](https://github.com/Nominom/BCnEncoder.NET)：MIT License
+- [Blender](https://www.blender.org/)：由用户独立安装并遵守 Blender 自身许可证
+
+## 免责声明
+
+本项目与 Koei Tecmo Games 及其关联公司无关。游戏名称、商标和资源归各自权利人所有。请仅处理你合法拥有的游戏文件，并遵守所在地法律与游戏服务条款；请勿传播导出的版权资源。

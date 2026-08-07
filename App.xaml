@@ -173,6 +173,82 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
 
+    <!-- Compact dark scrollbars shared by resource trees, inspectors and combo popups. -->
+    <Style x:Key="DarkScrollThumbStyle" TargetType="Thumb">
+      <Setter Property="Background" Value="#71859C"/>
+      <Setter Property="Margin" Value="2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="Grip" Background="{TemplateBinding Background}" CornerRadius="4"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="#A7B8CA"/></Trigger>
+              <Trigger Property="IsDragging" Value="True"><Setter TargetName="Grip" Property="Background" Value="{StaticResource AccentBrush}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Grip" Property="Opacity" Value="0"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="Vertical">
+          <Setter Property="MinHeight" Value="34"/>
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Orientation, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="Horizontal">
+          <Setter Property="MinWidth" Value="34"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DarkScrollPageButtonStyle" TargetType="RepeatButton">
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="IsTabStop" Value="False"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+      <Setter Property="Background" Value="#182330"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Border x:Name="TrackBackground" Background="{TemplateBinding Background}" CornerRadius="6">
+              <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True" Focusable="False"
+                     Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                     Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                     ViewportSize="{TemplateBinding ViewportSize}">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton x:Name="PageDecrease" Command="{x:Static ScrollBar.PageUpCommand}" Style="{StaticResource DarkScrollPageButtonStyle}"/>
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb><Thumb Style="{StaticResource DarkScrollThumbStyle}"/></Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton x:Name="PageIncrease" Command="{x:Static ScrollBar.PageDownCommand}" Style="{StaticResource DarkScrollPageButtonStyle}"/>
+                </Track.IncreaseRepeatButton>
+              </Track>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Width" Value="14"/><Setter Property="MinWidth" Value="14"/>
+                <Setter Property="Height" Value="Auto"/><Setter Property="MinHeight" Value="0"/>
+              </Trigger>
+              <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Height" Value="14"/><Setter Property="MinHeight" Value="14"/>
+                <Setter Property="Width" Value="Auto"/><Setter Property="MinWidth" Value="0"/>
+                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                <Setter TargetName="PageDecrease" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}"/>
+                <Setter TargetName="PageIncrease" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="TrackBackground" Property="Background" Value="#243243"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style TargetType="TabControl">
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabControl">

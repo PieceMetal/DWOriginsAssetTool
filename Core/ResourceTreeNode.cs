@@ -79,7 +79,7 @@ public sealed class ResourceTreeNode
             if (!string.IsNullOrWhiteSpace(asset.GameActionCategory))
             {
                 var owners = asset.GameActionOwners is { Count: 1 }
-                    ? OfficialNameAnnotations.Format(asset.GameActionOwners[0]) : "多个动作表共享";
+                    ? CharacterWeaponCatalog.FormatFolder(asset.GameActionOwners[0]) : "多个动作表共享";
                 return ["动画", asset.GameActionCategory!, owners, file];
             }
             return ["动画", "未恢复动作表归属", file];

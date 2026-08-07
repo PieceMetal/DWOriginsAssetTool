@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 
@@ -19,10 +20,10 @@ public static class BlenderFbxExporter
         var work = Path.Combine(Path.GetTempPath(), "dworigins-blender-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(work);
         var gltf = Path.Combine(work, "source.gltf");
-        var script = Path.Combine(AppContext.BaseDirectory, "Assets", "blender_export.py");
-        if (!File.Exists(script)) throw new FileNotFoundException("Blender 导出脚本缺失", script);
+        var script = Path.Combine(work, "blender_export.py");
         try
         {
+            ExtractBlenderScript(script);
             progress?.Report(("正在生成标准中间数据", 10));
             // glTF and Blender use meters.  Keep the camera in meters as well:
             // UE converts the FBX meter value to its native centimeters.  Writing
@@ -82,6 +83,20 @@ public static class BlenderFbxExporter
         finally { try { Directory.Delete(work, true); } catch { } }
     }
 
+    private static void ExtractBlenderScript(string destination)
+    {
+        var assembly = typeof(BlenderFbxExporter).Assembly;
+        var resourceName = assembly.GetManifestResourceNames().FirstOrDefault(x =>
+            x.EndsWith(".Assets.blender_export.py", StringComparison.OrdinalIgnoreCase) ||
+            x.EndsWith(".blender_export.py", StringComparison.OrdinalIgnoreCase));
+        if (resourceName is null)
+            throw new InvalidOperationException("程序内置的 Blender 导出组件缺失");
+        using var source = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException("无法读取程序内置的 Blender 导出组件");
+        using var target = File.Create(destination);
+        source.CopyTo(target);
+    }
+
     private static IEnumerable<float> GltfCameraTimes(float duration)
     {
         var frames = Math.Max(1, (int)Math.Ceiling(duration * 60));
@@ -91,15 +106,24 @@ public static class BlenderFbxExporter
     public static string? FindBlender(string gameRoot)
     {
         var candidates = new List<string>();
-        var library = Directory.GetParent(gameRoot)?.FullName;
+        if (!string.IsNullOrWhiteSpace(UserPreferences.BlenderPath))
+            candidates.Add(UserPreferences.BlenderPath);
+        var library = string.IsNullOrWhiteSpace(gameRoot) ? null : Directory.GetParent(gameRoot)?.FullName;
         if (!string.IsNullOrWhiteSpace(library)) candidates.Add(Path.Combine(library, "Blender", "blender.exe"));
         candidates.AddRange(new[]
         {
+            @"C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe",
             @"C:\Program Files\Blender Foundation\Blender\blender.exe",
             @"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe",
             @"C:\Program Files\Blender Foundation\Blender 4.4\blender.exe",
             @"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe"
         });
+        foreach (var drive in DriveInfo.GetDrives().Where(x => x.IsReady))
+            candidates.Add(Path.Combine(drive.RootDirectory.FullName, "Steam", "steamapps", "common", "Blender", "blender.exe"));
+        var foundation = @"C:\Program Files\Blender Foundation";
+        if (Directory.Exists(foundation))
+            candidates.AddRange(Directory.EnumerateDirectories(foundation, "Blender*")
+                .Select(path => Path.Combine(path, "blender.exe")));
         return candidates.FirstOrDefault(File.Exists);
     }
 }

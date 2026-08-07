@@ -1,5 +1,6 @@
 import bpy
 import sys
+import json
 from mathutils import Matrix, Vector
 
 args = sys.argv[sys.argv.index('--') + 1:]
@@ -17,8 +18,26 @@ bpy.context.scene.render.fps = 60
 bpy.context.scene.render.fps_base = 1.0
 bpy.context.scene.frame_start = 0
 bpy.ops.import_scene.gltf(filepath=source)
+# Blender's glTF importer can create a helper mesh for an armature even when
+# the source intentionally contains no mesh data. Animation-only FBX must have
+# zero mesh objects, so distinguish that mode from a real model by inspecting
+# the glTF document and remove importer helpers before FBX export.
+with open(source, 'r', encoding='utf-8') as source_file:
+    source_document = json.load(source_file)
+if not source_document.get('meshes'):
+    for helper_mesh in [obj for obj in bpy.data.objects if obj.type == 'MESH']:
+        bpy.data.objects.remove(helper_mesh, do_unlink=True)
+# UE's FBX skeletal importer treats an object named exactly "Armature" as the
+# Blender conversion container and removes it from the imported bone tree.
+# Leaving the glTF scene/model name here creates one fake parent bone above the
+# real game root (bone_0000). Keep model and animation exports identical.
+armatures = [obj for obj in bpy.data.objects if obj.type == 'ARMATURE']
+if armatures:
+    primary_armature = armatures[0]
+    primary_armature.name = 'Armature'
+    primary_armature.data.name = 'Armature'
 if len(args) == 3:
-    import json, math
+    import math
     with open(args[2], 'r', encoding='utf-8') as f:
         camera_data = json.load(f)
     cameras = [o for o in bpy.context.scene.objects if o.type == 'CAMERA']
@@ -98,6 +117,7 @@ bpy.ops.export_scene.fbx(
     # carrying camera curves is not sufficient.
     object_types={'ARMATURE', 'MESH', 'EMPTY', 'CAMERA'},
     add_leaf_bones=False,
+    armature_nodetype='NULL',
     bake_anim=True,
     bake_anim_use_all_bones=True,
     bake_anim_use_all_actions=False,

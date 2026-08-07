@@ -55,6 +55,7 @@ public partial class MainWindow : Window
     private ModelAttachmentComposer.Attachment? _weaponAttachment;
     private const int DefaultWeaponAttachmentBoneId = 104;
     private readonly List<MeshGeometry3D> _meshGeometries = [];
+    private readonly List<Point3DCollection> _meshPositionBackBuffers = [];
     private readonly List<GeometryModel3D> _meshModels = [];
     private readonly List<Material> _texturedMaterials = [];
     private readonly List<Material> _solidMaterials = [];
@@ -69,6 +70,12 @@ public partial class MainWindow : Window
     private readonly Dictionary<int, ImageBrush> _characterTextures = [];
     private bool _startupPreviewHandled;
     private bool _exporting;
+    private AnimationPoseEvaluator.Prepared? _preparedPose;
+    private G1MInfo? _preparedPoseModel;
+    private G1AClip? _preparedPoseClip;
+    private double _lastPlaybackUiUpdate = double.NegativeInfinity;
+    private readonly Stopwatch _playbackFpsClock = new();
+    private int _playbackFrames;
 
     private sealed record BoneChoice(int LocalId, int GlobalId)
     {
@@ -77,25 +84,28 @@ public partial class MainWindow : Window
 
     // 与参考 RE 工具统一为 UE 风格世界：X 侧向、Y 向前、Z 向上。
     // G1M 本身是 Y 向上，只在渲染边界换基底，动画/蒙皮计算保持源格式。
-    private sealed record QuickCharacterChoice(string Id, string DisplayName, AssetEntry Model);
-    private sealed record QuickWeaponChoice(string Id, string DisplayName, AssetEntry Model);
-    private sealed record QuickAnimationChoice(string DisplayName, AssetEntry Animation);
+    private sealed record QuickCharacterChoice(string Id, string DisplayName, AssetEntry Model)
+    {
+        public override string ToString() => DisplayName;
+    }
+    private sealed record QuickWeaponChoice(string Id, string DisplayName, AssetEntry Model)
+    {
+        public override string ToString() => DisplayName;
+    }
+    private sealed record QuickAnimationChoice(string DisplayName, AssetEntry Animation)
+    {
+        public override string ToString() => DisplayName;
+    }
+    private sealed record QuickCameraActionChoice(string DisplayName, AssetEntry Animation,
+        QuickCharacterChoice Character, QuickWeaponChoice? Weapon)
+    {
+        public override string ToString() => DisplayName;
+    }
 
     private readonly Dictionary<string, QuickCharacterChoice> _quickCharacters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, QuickWeaponChoice> _quickWeapons = new(StringComparer.OrdinalIgnoreCase);
     private bool _updatingQuickPreview;
-
-    private static readonly IReadOnlyDictionary<string, string> DefaultWeaponPrefixes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["H0100_"] = "HW0002_",
-            ["H0000_"] = "HW0006_", ["H0001_"] = "HW0034_", ["H0002_"] = "HW0001_",
-            ["H0003_"] = "HW0042_", ["H0004_"] = "HW0032_", ["H0005_"] = "HW0010_",
-            ["H0008_"] = "HW0000_", ["H0009_"] = "HW0007_", ["H0010_"] = "HW0008_",
-            ["H0012_"] = "HW0042_", ["H0014_"] = "HW0009_", ["H0015_"] = "HW0002_",
-            ["H0017_"] = "HW0002_", ["H0022_"] = "HW0031_", ["H0031_"] = "HW0004_",
-            ["H0041_"] = "HW0039_"
-        };
+    private int _cameraPreviewRequest;
 
     private static Point3D ToWorld(float x, float y, float z) => new(-x, z, y);
     private static Vector3D ToWorldNormal(float x, float y, float z) => new(-x, z, y);
@@ -118,7 +128,7 @@ public partial class MainWindow : Window
         Viewport.Children.Add(new ModelVisual3D { Content = _scene });
         WireframeLayer.Camera = ViewportCamera;
         BoneTree.ItemsSource = _boneRoots;
-        _animationTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(1000d / 30) };
+        _animationTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(1000d / 60) };
         _animationTimer.Tick += AnimationTimer_Tick;
         CompositionTarget.Rendering += Viewport_Rendering;
         Closed += (_, _) => CompositionTarget.Rendering -= Viewport_Rendering;
@@ -127,14 +137,15 @@ public partial class MainWindow : Window
             if (!UserPreferences.HideStartupGuide)
                 ShowUserGuide();
             var guessed = FindGameRoot(AppContext.BaseDirectory) ?? FindGameRoot(Environment.CurrentDirectory);
-            if (guessed is not null) { _root = guessed; UpdateGameRootDisplay(); await ScanAsync(); }
+            if (guessed is not null) { _root = guessed; UpdateGameRootDisplay(); RefreshBlenderStatus(); await ScanAsync(); }
+            else RefreshBlenderStatus();
         };
     }
 
     private void MainWindow_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         e.Handled = true;
-        _animationTimer.Stop();
+        StopAnimationPlayback();
         PlayButton.IsEnabled = false;
         StatusText.Text = $"预览失败：{e.Exception.Message}";
         PreviewSummary.Text = "动画预览遇到异常，模型仍可继续选择";
@@ -238,6 +249,7 @@ public partial class MainWindow : Window
         if (args.Any(x => x.Equals("--play", StringComparison.OrdinalIgnoreCase)) && PlayButton.IsEnabled)
         {
             _lastTick = DateTime.UtcNow;
+            ResetPlaybackFps(true);
             _animationTimer.Start();
             PlayButton.Content = "⏸";
         }
@@ -300,22 +312,42 @@ public partial class MainWindow : Window
                 !owner.StartsWith("HW", StringComparison.OrdinalIgnoreCase))
             .GroupBy(x => x.OwnerName!, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderByDescending(x => x.Size).ThenBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase).First())
-            .OrderBy(x => x.OwnerName, StringComparer.OrdinalIgnoreCase);
-        foreach (var model in characterModels)
+            .OrderBy(x => x.OwnerName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var characterGroups = characterModels.GroupBy(model =>
+                OfficialNameAnnotations.Get(model.OwnerName) ?? "其他角色",
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var unnamedCharacterIndex = 0;
+        foreach (var group in characterGroups)
         {
-            var id = model.OwnerName!;
-            var label = OfficialNameAnnotations.Format(id);
-            _quickCharacters[id] = new(id, label, model);
+            var models = group.ToList();
+            for (var index = 0; index < models.Count; index++)
+            {
+                var model = models[index];
+                var id = model.OwnerName!;
+                var label = group.Key == "其他角色"
+                    ? $"其他角色 {++unnamedCharacterIndex:00}"
+                    : models.Count == 1 ? group.Key : $"{group.Key} {index + 1}";
+                _quickCharacters[id] = new(id, label, model);
+            }
         }
 
         var weapons = _all.Where(x => x.Kind == AssetKind.Model &&
                 x.OwnerName is { Length: > 0 } owner && owner.StartsWith("HW", StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x.OwnerName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase);
-        foreach (var weapon in weapons)
+            .ThenBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var group in weapons.GroupBy(x => OfficialNameAnnotations.Get(x.OwnerName) ?? "其他武器"))
         {
-            var id = weapon.OwnerName! + "\0" + weapon.HashId;
-            _quickWeapons[id] = new(id, weapon.AnnotatedDisplayName, weapon);
+            var models = group.ToList();
+            for (var index = 0; index < models.Count; index++)
+            {
+                var weapon = models[index];
+                var id = weapon.OwnerName! + "\0" + weapon.HashId;
+                var label = models.Count == 1 ? group.Key : $"{group.Key} · 款式 {index + 1:00}";
+                _quickWeapons[id] = new(id, label, weapon);
+            }
         }
 
         _updatingQuickPreview = true;
@@ -325,6 +357,7 @@ public partial class MainWindow : Window
         QuickCharacterBox.SelectedItem = _quickCharacters.Values
             .FirstOrDefault(x => x.Id.Equals("H0100_Hero0", StringComparison.OrdinalIgnoreCase))
             ?? _quickCharacters.Values.FirstOrDefault();
+        BuildQuickCameraActions();
         _updatingQuickPreview = false;
         if (QuickCharacterBox.SelectedItem is QuickCharacterChoice selected)
             _ = ApplyQuickCharacterAsync(selected);
@@ -336,7 +369,7 @@ public partial class MainWindow : Window
         var values = _quickWeapons.Values.ToList();
         QuickWeaponBox.ItemsSource = values;
         QuickWeaponBox.IsEnabled = values.Count > 0;
-        var prefix = DefaultWeaponPrefixes.FirstOrDefault(x => characterId.StartsWith(x.Key, StringComparison.OrdinalIgnoreCase)).Value;
+        var prefix = CharacterWeaponCatalog.WeaponPrefixForCharacter(characterId);
         var choice = preferred is not null
             ? values.FirstOrDefault(x => ReferenceEquals(x.Model, preferred) || x.Model.HashId.Equals(preferred.HashId, StringComparison.OrdinalIgnoreCase))
             : string.IsNullOrWhiteSpace(prefix) ? null
@@ -345,25 +378,89 @@ public partial class MainWindow : Window
         _updatingQuickPreview = false;
     }
 
-    private void BuildQuickAnimations(string characterId)
+    private void BuildQuickAnimations(string characterId, QuickWeaponChoice? weapon)
     {
-        var values = _all.Where(x => x.Kind == AssetKind.Animation && !x.IsActionCamera &&
-                ((x.GameActionOwners?.Any(owner => owner.Equals(characterId, StringComparison.OrdinalIgnoreCase)) ?? false) ||
-                 string.Equals(x.OwnerName, characterId, StringComparison.OrdinalIgnoreCase)))
+        var weaponPrefix = CharacterWeaponCatalog.WeaponPrefixFromModel(weapon?.Model.OwnerName);
+        var assets = _all.Where(x => x.Kind == AssetKind.Animation && !x.IsActionCamera &&
+                (weaponPrefix is null
+                    ? (x.GameActionOwners?.Any(owner => owner.Equals(characterId, StringComparison.OrdinalIgnoreCase)) ?? false) ||
+                      string.Equals(x.OwnerName, characterId, StringComparison.OrdinalIgnoreCase)
+                    : x.GameActionOwners?.Any(owner => CharacterWeaponCatalog.UsesWeapon(owner, weaponPrefix)) == true))
             .OrderBy(x => x.TreeDisplayName, StringComparer.OrdinalIgnoreCase)
-            .Select(x => new QuickAnimationChoice(x.AnnotatedDisplayName, x))
             .ToList();
+        var categoryCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var values = assets.Select(asset =>
+        {
+            var owner = asset.GameActionOwners?.FirstOrDefault(candidate =>
+                weaponPrefix is null || CharacterWeaponCatalog.UsesWeapon(candidate, weaponPrefix));
+            var actionSet = owner is null ? FriendlyActionCategory(asset.GameActionCategory) : CharacterWeaponCatalog.Format(owner);
+            categoryCounts.TryGetValue(actionSet, out var number);
+            categoryCounts[actionSet] = ++number;
+            var camera = string.IsNullOrWhiteSpace(asset.ActionCameraResourceId) ? "" : "（含镜头）";
+            return new QuickAnimationChoice($"{actionSet} · 动作 {number:000}{camera}", asset);
+        }).ToList();
         QuickAnimationBox.ItemsSource = values;
         QuickAnimationBox.IsEnabled = values.Count > 0;
         QuickAnimationBox.SelectedItem = null;
+        var characterName = OfficialNameAnnotations.Get(characterId) ?? "当前角色";
+        var weaponName = weapon is null ? "当前角色" : weapon.DisplayName.Split('·')[0].Trim();
         QuickPreviewHint.Text = values.Count == 0
-            ? $"{OfficialNameAnnotations.Format(characterId)} 未找到可直接播放的角色动作。"
-            : $"{OfficialNameAnnotations.Format(characterId)}：已找到 {values.Count:N0} 个角色动作；选择动画即可播放。";
+            ? $"未找到与“{weaponName}”可靠对应的动作集。"
+            : $"{characterName}使用{weaponName}：已找到 {values.Count:N0} 个对应动作。";
     }
+
+    private void BuildQuickCameraActions()
+    {
+        var categoryCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var assets = _all.Where(x => x.Kind == AssetKind.Animation && !x.IsActionCamera &&
+                                     !string.IsNullOrWhiteSpace(x.ActionCameraResourceId))
+            .OrderBy(x => x.GameActionOwners?.FirstOrDefault(), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.TreeDisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var values = new List<QuickCameraActionChoice>();
+        foreach (var asset in assets)
+        {
+            var owner = asset.GameActionOwners?.FirstOrDefault();
+            var character = FindQuickCharacterForActionOwner(owner);
+            if (character is null) continue;
+            var actionSet = string.IsNullOrWhiteSpace(owner)
+                ? FriendlyActionCategory(asset.GameActionCategory)
+                : CharacterWeaponCatalog.Format(owner);
+            categoryCounts.TryGetValue(actionSet, out var number);
+            categoryCounts[actionSet] = ++number;
+            var weapon = FindDefaultQuickWeapon(owner ?? character.Id);
+            values.Add(new($"{actionSet} · 镜头动作 {number:000}", asset, character, weapon));
+        }
+        QuickCameraActionBox.ItemsSource = values;
+        QuickCameraActionBox.IsEnabled = values.Count > 0;
+        QuickCameraActionBox.SelectedItem = null;
+        CameraPreviewHint.Text = $"已从游戏本体确认 {_cameraCatalog.Count:N0} 组动作镜头；其中 {values.Count:N0} 组已恢复固定角色模型，可直接预览。";
+    }
+
+    private QuickCharacterChoice? FindQuickCharacterForActionOwner(string? owner)
+    {
+        if (string.IsNullOrWhiteSpace(owner)) return null;
+        if (_quickCharacters.TryGetValue(owner, out var exact)) return exact;
+        var separator = owner.IndexOf('_');
+        var prefix = separator >= 0 ? owner[..(separator + 1)] : owner;
+        return _quickCharacters.Values.FirstOrDefault(x => x.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FriendlyActionCategory(string? category) => category switch
+    {
+        "角色/武将动作表" => "角色动作",
+        "共享动作表" => "共享动作",
+        "事件动作表" => "事件动作",
+        "大地图动作表" => "大地图动作",
+        "ACT 动作表" => "战斗动作",
+        "游戏动作表" => "通用动作",
+        "动画镜头" => "镜头动画",
+        _ => "角色动作"
+    };
 
     private QuickWeaponChoice? FindDefaultQuickWeapon(string characterId)
     {
-        var prefix = DefaultWeaponPrefixes.FirstOrDefault(p => characterId.StartsWith(p.Key, StringComparison.OrdinalIgnoreCase)).Value;
+        var prefix = CharacterWeaponCatalog.WeaponPrefixForCharacter(characterId);
         return string.IsNullOrWhiteSpace(prefix) ? null : _quickWeapons.Values.FirstOrDefault(x =>
             x.Model.OwnerName?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == true);
     }
@@ -379,13 +476,13 @@ public partial class MainWindow : Window
         _updatingQuickPreview = true;
         await PreviewAssetAsync(choice.Model);
         BuildQuickWeapons(choice.Id);
-        BuildQuickAnimations(choice.Id);
         var defaultWeapon = FindDefaultQuickWeapon(choice.Id);
         if (defaultWeapon is not null)
         {
             QuickWeaponBox.SelectedItem = defaultWeapon;
             await LoadAccessoryAssetAsync(defaultWeapon.Model);
         }
+        BuildQuickAnimations(choice.Id, defaultWeapon);
         _updatingQuickPreview = false;
         StatusText.Text = $"已加载 {choice.DisplayName} · 默认武器与角色动作已准备";
     }
@@ -393,13 +490,62 @@ public partial class MainWindow : Window
     private async void QuickWeapon_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_updatingQuickPreview || QuickWeaponBox.SelectedItem is not QuickWeaponChoice choice) return;
-        await LoadAccessoryAssetAsync(choice.Model);
+        _updatingQuickPreview = true;
+        try
+        {
+            await LoadAccessoryAssetAsync(choice.Model);
+            if (QuickCharacterBox.SelectedItem is QuickCharacterChoice character)
+                BuildQuickAnimations(character.Id, choice);
+        }
+        finally { _updatingQuickPreview = false; }
     }
 
     private async void QuickAnimation_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_updatingQuickPreview || QuickAnimationBox.SelectedItem is not QuickAnimationChoice choice) return;
         await PreviewAssetAsync(choice.Animation);
+    }
+
+    private async void QuickCameraAction_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (QuickCameraActionBox.SelectedItem is not QuickCameraActionChoice choice) return;
+        CameraPreviewCharacterText.Text = choice.Weapon is null
+            ? choice.Character.DisplayName
+            : $"{choice.Character.DisplayName} · {choice.Weapon.DisplayName}";
+        CameraPreviewAnimationText.Text = choice.DisplayName;
+        CameraPreviewCameraText.Text = choice.Animation.ActionCameraResourceId ?? "未找到";
+        var request = ++_cameraPreviewRequest;
+        await PlayFixedCameraPreviewAsync(choice, request);
+    }
+
+    private async Task PlayFixedCameraPreviewAsync(QuickCameraActionChoice cameraAction, int request)
+    {
+        _updatingQuickPreview = true;
+        try
+        {
+            await PreviewAssetAsync(cameraAction.Character.Model);
+            if (request != _cameraPreviewRequest) return;
+            if (cameraAction.Weapon is not null) await LoadAccessoryAssetAsync(cameraAction.Weapon.Model);
+            if (request != _cameraPreviewRequest) return;
+            await PreviewAssetAsync(cameraAction.Animation);
+            if (request != _cameraPreviewRequest) return;
+            if (_actionCamera is null)
+            {
+                StatusText.Text = "该动作的镜头资源读取失败，未开始播放";
+                return;
+            }
+            CameraModeCombo.SelectedIndex = 1;
+            SeekPlayback(0);
+            _lastTick = DateTime.UtcNow;
+            ResetPlaybackFps(true);
+            _animationTimer.Start();
+            PlayButton.Content = "⏸";
+            StatusText.Text = $"正在播放 {cameraAction.Character.DisplayName} · {cameraAction.DisplayName}";
+        }
+        finally
+        {
+            _updatingQuickPreview = false;
+        }
     }
 
     private async void LoadQuickPreview_Click(object sender, RoutedEventArgs e)
@@ -463,11 +609,12 @@ public partial class MainWindow : Window
         _previewingPath = asset.FullPath;
         await _previewGate.WaitAsync();
         _selected = asset;
+        if (asset.Kind is AssetKind.Model or AssetKind.Animation) StopAnimationPlayback();
         // The preview model is user-owned state: only selecting another model may replace it.
         // Choosing animations, camera clips, packages or other resources must not silently clear it.
         if (asset.Kind == AssetKind.Model)
         {
-            _animationTimer.Stop(); _clip = null; _actionCamera = null; _animationAsset = null;
+            _clip = null; _actionCamera = null; _animationAsset = null;
             WeaponCheck.IsChecked = false; WeaponCheck.IsEnabled = false;
             _weaponAsset = null; _weaponModel = null; _weaponAttachment = null;
             _weaponGeometries.Clear(); _weaponGroup.Children.Clear();
@@ -494,7 +641,6 @@ public partial class MainWindow : Window
                 var a = await Task.Run(() => G1Parsers.ReadAnimation(asset.FullPath));
                 if (asset.IsActionCamera)
                 {
-                    _animationTimer.Stop(); PlayButton.Content = "▶";
                     DetailBody.Text = $"资源类型：动画镜头\n镜头动画版本：{a.Version}\n文件大小：{asset.SizeText}\n时长：{a.Duration:0.###} 秒\n镜头变换轨道：{a.TrackCount}\n\n该资源由角色动作自动调用，不会作为骨骼动画套到人物上。请选择与它关联的角色动作，再把播放栏切换到“动画镜头”。";
                     PreviewSummary.Text = $"{asset.AnnotatedDisplayName} · 动画镜头资源 · {a.Duration:0.###} 秒";
                     StatusText.Text = $"已识别动画镜头 {asset.AnnotatedDisplayName}；请选择对应角色动作进行同步播放";
@@ -573,6 +719,81 @@ public partial class MainWindow : Window
         ExportAnimationFbxButton.IsEnabled = hasModel && _clip is { Tracks.Count: > 0 };
         ExportCameraFbxButton.IsEnabled = hasModel && _clip is { Tracks.Count: > 0 } && _actionCamera is not null;
     }
+
+    private string? _detectedBlenderPath;
+
+    private void RefreshBlenderStatus()
+    {
+        _detectedBlenderPath = BlenderFbxExporter.FindBlender(_root);
+        var found = !string.IsNullOrWhiteSpace(_detectedBlenderPath);
+        BlenderStatusDot.Fill = found ? new SolidColorBrush(Color.FromRgb(88, 198, 139)) : new SolidColorBrush(Color.FromRgb(229, 173, 67));
+        BlenderStatusText.Text = found ? "已检测到，可导出 FBX" : "未检测到，FBX 导出不可用";
+        BlenderStatusText.Foreground = found ? new SolidColorBrush(Color.FromRgb(128, 219, 169)) : new SolidColorBrush(Color.FromRgb(242, 190, 89));
+        BlenderPathText.Text = found ? _detectedBlenderPath! : "可通过 Steam 或 Blender 官网免费安装";
+        BlenderPathText.ToolTip = found ? _detectedBlenderPath : null;
+        BlenderLocationButton.Content = found ? "打开位置" : "选择程序";
+        BlenderSteamButton.Content = found ? "Steam 页面" : "Steam 安装";
+    }
+
+    private bool EnsureBlenderReady()
+    {
+        RefreshBlenderStatus();
+        if (_detectedBlenderPath is not null) return true;
+        MessageBox.Show(this, "FBX 导出需要 Blender。请使用右下角的“Steam 安装”“官网下载”，或手动选择 blender.exe。",
+            "需要 Blender", MessageBoxButton.OK, MessageBoxImage.Information);
+        return false;
+    }
+
+    private void BlenderLocation_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshBlenderStatus();
+        if (_detectedBlenderPath is not null)
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{_detectedBlenderPath}\"") { UseShellExecute = true });
+            return;
+        }
+        var dialog = new OpenFileDialog { Title = "选择 Blender 程序", Filter = "Blender 程序|blender.exe|可执行程序|*.exe" };
+        if (dialog.ShowDialog(this) != true) return;
+        UserPreferences.SetBlenderPath(dialog.FileName);
+        RefreshBlenderStatus();
+    }
+
+    private static void OpenExternalLink(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    private void OpenBlenderSteam_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshBlenderStatus();
+        var steamUri = _detectedBlenderPath is null ? "steam://install/365670" : "steam://store/365670";
+        try
+        {
+            var steam = FindSteamExecutable();
+            if (steam is null) throw new FileNotFoundException("未找到 Steam 程序");
+            var start = new ProcessStartInfo(steam) { UseShellExecute = true };
+            start.ArgumentList.Add(steamUri);
+            Process.Start(start);
+            StatusText.Text = _detectedBlenderPath is null
+                ? "已在 Steam 中打开 Blender 安装页面"
+                : "已在 Steam 中打开 Blender 页面（当前已安装）";
+        }
+        catch
+        {
+            OpenExternalLink("https://store.steampowered.com/app/365670/Blender/");
+            StatusText.Text = "Steam 未能启动，已改为打开 Blender 网页";
+        }
+    }
+
+    private static string? FindSteamExecutable()
+    {
+        var registry = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamExe", null)?.ToString();
+        var candidates = new[]
+        {
+            registry,
+            @"C:\Program Files (x86)\Steam\steam.exe",
+            @"C:\Program Files\Steam\steam.exe",
+            @"E:\Steam\steam.exe"
+        };
+        return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
+    }
+    private void OpenBlenderWebsite_Click(object sender, RoutedEventArgs e) => OpenExternalLink("https://www.blender.org/download/");
 
     private void BeginExportProgress()
     {
@@ -716,7 +937,7 @@ public partial class MainWindow : Window
 
     private void RenderModel()
     {
-        _scene.Children.Clear(); _meshGeometries.Clear(); _meshModels.Clear(); _texturedMaterials.Clear(); _solidMaterials.Clear(); ViewportOverlay.Children.Clear();
+        _scene.Children.Clear(); _meshGeometries.Clear(); _meshPositionBackBuffers.Clear(); _meshModels.Clear(); _texturedMaterials.Clear(); _solidMaterials.Clear(); ViewportOverlay.Children.Clear();
         if (_model is null) return;
         var minWorld = ToWorld(_model.MaxX, _model.MinY, _model.MinZ);
         var maxWorld = ToWorld(_model.MinX, _model.MaxY, _model.MaxZ);
@@ -755,7 +976,9 @@ public partial class MainWindow : Window
             solid.Children.Add(new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(168, 174, 184))));
             solid.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(90, 255, 255, 255)), 24));
             var geometry = new GeometryModel3D(mesh, group) { BackMaterial = group };
-            _meshGeometries.Add(mesh); _meshModels.Add(geometry); _texturedMaterials.Add(group); _solidMaterials.Add(solid); _scene.Children.Add(geometry);
+            _meshGeometries.Add(mesh);
+            _meshPositionBackBuffers.Add(new Point3DCollection(mesh.Positions));
+            _meshModels.Add(geometry); _texturedMaterials.Add(group); _solidMaterials.Add(solid); _scene.Children.Add(geometry);
         }
         _wireframeEdges = BuildWireframeEdges(_meshGeometries, 20_000);
         WireframeLayer.SetGeometry(_meshGeometries, _wireframeEdges);
@@ -869,18 +1092,63 @@ public partial class MainWindow : Window
         var bones = _model.Bones; if (bones.Count == 0) return;
         var characterTime = Math.Clamp(time, 0, _clip.Info.Duration);
         // 角色骨骼动画按原始 G1A/G2A 局部轨道求值。
-        var pose = AnimationPoseEvaluator.Evaluate(_model, _clip, characterTime);
+        if (!ReferenceEquals(_preparedPoseModel, _model) || !ReferenceEquals(_preparedPoseClip, _clip) || _preparedPose is null)
+        {
+            _preparedPose = AnimationPoseEvaluator.Prepare(_model, _clip);
+            _preparedPoseModel = _model;
+            _preparedPoseClip = _clip;
+        }
+        var pose = _preparedPose.Evaluate(characterTime);
         RenderSkinnedModel(pose.SkinMatrices);
-        _animatedBonePositions = pose.WorldMatrices.Select(x => x.Translation).ToArray();
-        _animatedBoneIds = pose.AnimatedLocalBoneIds.Select(i => bones[i].GlobalId).ToHashSet();
-        if (_showSkeleton) _overlayDirty = true;
-        ViewportHint.Text = $"同步时间 {time:0.00}s · 人物 {characterTime:0.00}/{_clip.Info.Duration:0.00}s · 黄色为动画轨道";
-        TimelineText.Text = $"{characterTime:0.00} / {_clip.Info.Duration:0.00} s";
+        if (_showSkeleton)
+        {
+            _animatedBonePositions = pose.WorldMatrices.Select(x => x.Translation).ToArray();
+            _animatedBoneIds = pose.AnimatedLocalBoneIds.Select(i => bones[i].GlobalId).ToHashSet();
+            _overlayDirty = true;
+        }
+        if (!_animationTimer.IsEnabled || Math.Abs(characterTime - _lastPlaybackUiUpdate) >= .08 || characterTime < _lastPlaybackUiUpdate)
+        {
+            _lastPlaybackUiUpdate = characterTime;
+            ViewportHint.Text = $"同步时间 {time:0.00}s · 人物 {characterTime:0.00}/{_clip.Info.Duration:0.00}s · 黄色为动画轨道";
+            TimelineText.Text = $"{characterTime:0.00} / {_clip.Info.Duration:0.00} s";
+        }
         if (CameraModeCombo.SelectedIndex == 1 && _actionCamera is not null) ApplyActionCamera(time);
         UpdateCameraGizmo(time);
         UpdateCameraTrajectoryCursor(time);
         UpdateRealtimeCameraData(time);
         UpdateWeaponPreview(pose.WorldMatrices);
+        RecordPlaybackFrame();
+    }
+
+    private void ResetPlaybackFps(bool playing)
+    {
+        _playbackFrames = 0;
+        _playbackFpsClock.Restart();
+        PlaybackFpsText.Text = playing ? "… FPS" : "-- FPS";
+        PlaybackFpsText.Foreground = new SolidColorBrush(Color.FromRgb(143, 155, 173));
+    }
+
+    private void StopAnimationPlayback()
+    {
+        _animationTimer.Stop();
+        ResetPlaybackFps(false);
+        PlayButton.Content = "▶";
+    }
+
+    private void RecordPlaybackFrame()
+    {
+        if (!_animationTimer.IsEnabled) return;
+        _playbackFrames++;
+        var elapsed = _playbackFpsClock.Elapsed.TotalSeconds;
+        if (elapsed < .5) return;
+        var fps = _playbackFrames / elapsed;
+        PlaybackFpsText.Text = $"{fps:0.0} FPS";
+        PlaybackFpsText.Foreground = new SolidColorBrush(fps >= 57
+            ? Color.FromRgb(99, 214, 143)
+            : fps >= 48 ? Color.FromRgb(241, 190, 72)
+            : Color.FromRgb(239, 106, 106));
+        _playbackFrames = 0;
+        _playbackFpsClock.Restart();
     }
 
     private void UpdateRealtimeCameraData(float time)
@@ -941,8 +1209,12 @@ public partial class MainWindow : Window
 
     private void UpdateCameraGizmo(float time)
     {
+        if (CameraGizmoCheck.IsChecked != true || CameraModeCombo.SelectedIndex != 0 || _actionCamera is null || _model is null)
+        {
+            if (_cameraGizmo.Children.Count > 0) _cameraGizmo.Children.Clear();
+            return;
+        }
         _cameraGizmo.Children.Clear();
-        if (CameraGizmoCheck.IsChecked != true || CameraModeCombo.SelectedIndex != 0 || _actionCamera is null || _model is null) return;
         // 示意摄像机与实际动画镜头使用相同的本体坐标。
         var frame = ActionCameraCatalog.Sample(_actionCamera, time);
         var position = ToWorld(frame.Position.X, frame.Position.Y, frame.Position.Z);
@@ -999,9 +1271,13 @@ public partial class MainWindow : Window
 
     private void UpdateCameraTrajectoryCursor(float time)
     {
-        _cameraTrajectoryCursor.Children.Clear();
         if (CameraTrajectoryCheck.IsChecked != true || CameraModeCombo.SelectedIndex != 0 ||
-            _actionCamera is null || _model is null) return;
+            _actionCamera is null || _model is null)
+        {
+            if (_cameraTrajectoryCursor.Children.Count > 0) _cameraTrajectoryCursor.Children.Clear();
+            return;
+        }
+        _cameraTrajectoryCursor.Children.Clear();
         var sample = ActionCameraCatalog.Sample(_actionCamera, time);
         var position = ToWorld(sample.Position.X, sample.Position.Y, sample.Position.Z);
         var material = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(246, 190, 67)));
@@ -1150,6 +1426,7 @@ public partial class MainWindow : Window
     private void BuildWeaponPreview()
     {
         _weaponGroup.Children.Clear(); _weaponGeometries.Clear();
+        _weaponGroup.Transform = Transform3D.Identity;
         if (WeaponCheck.IsChecked != true || _weaponModel is null) return;
         var material = new MaterialGroup();
         material.Children.Add(new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(173, 151, 105))));
@@ -1172,18 +1449,15 @@ public partial class MainWindow : Window
         var slot = _model.Bones.FirstOrDefault(bone => bone.GlobalId == _weaponAttachment.TargetGlobalBoneId);
         if (slot is null || slot.LocalId < 0 || slot.LocalId >= poseWorld.Count) return;
         var transform = ModelAttachmentComposer.Compose(_weaponAttachment, _accessoryAdjustment, poseWorld[slot.LocalId]);
-        for (var partIndex = 0; partIndex < _weaponModel.Parts.Count && partIndex < _weaponGeometries.Count; partIndex++)
-        {
-            var part = _weaponModel.Parts[partIndex];
-            var points = new Point3DCollection(part.Positions.Length / 3);
-            for (var i = 0; i < part.Positions.Length / 3; i++)
-            {
-                var source = new Vector3(part.Positions[i * 3], part.Positions[i * 3 + 1], part.Positions[i * 3 + 2]);
-                var value = Vector3.Transform(source, transform);
-                points.Add(ToWorld(value.X, value.Y, value.Z));
-            }
-            _weaponGeometries[partIndex].Positions = points;
-        }
+        // The accessory remains an independent rigid model. Move the retained
+        // geometry as one object instead of rebuilding every weapon vertex.
+        var basis = new Matrix4x4(-1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+        var worldTransform = basis * transform * basis;
+        var matrix = new Matrix3D(worldTransform.M11, worldTransform.M12, worldTransform.M13, worldTransform.M14,
+            worldTransform.M21, worldTransform.M22, worldTransform.M23, worldTransform.M24,
+            worldTransform.M31, worldTransform.M32, worldTransform.M33, worldTransform.M34,
+            worldTransform.M41, worldTransform.M42, worldTransform.M43, worldTransform.M44);
+        _weaponGroup.Transform = new MatrixTransform3D(matrix);
     }
 
     private void UpdateWeaponToCurrentPose()
@@ -1246,17 +1520,21 @@ public partial class MainWindow : Window
 
     private void RenderSkinnedModel(Matrix4x4[] skin)
     {
-        if (_model is null || _meshGeometries.Count != _model.Parts.Count) return;
+        if (_model is null || _meshGeometries.Count != _model.Parts.Count ||
+            _meshPositionBackBuffers.Count != _model.Parts.Count) return;
         for (var partIndex = 0; partIndex < _model.Parts.Count; partIndex++)
         {
             var part = _model.Parts[partIndex]; var p = part.Positions;
-            var points = new Point3DCollection(p.Length / 3);
+            if (part.BoneIndices is null || part.BoneWeights is null) continue;
+            var points = _meshPositionBackBuffers[partIndex];
             for (var i = 0; i < p.Length / 3; i++)
             {
                 var v = AnimationPoseEvaluator.SkinVertex(part, i, skin);
-                points.Add(ToWorld(v.X, v.Y, v.Z));
+                points[i] = ToWorld(v.X, v.Y, v.Z);
             }
-            _meshGeometries[partIndex].Positions = points;
+            var mesh = _meshGeometries[partIndex];
+            _meshPositionBackBuffers[partIndex] = mesh.Positions;
+            mesh.Positions = points;
         }
         if (_renderMode == 2) WireframeLayer.RequestRender();
     }
@@ -1552,8 +1830,8 @@ public partial class MainWindow : Window
     private void PlayAnimation_Click(object s, RoutedEventArgs e)
     {
         if (_clip is null) return;
-        if (_animationTimer.IsEnabled) { _animationTimer.Stop(); PlayButton.Content = "▶"; }
-        else { if (_playbackTime >= GetPlaybackDuration()) SeekPlayback(0); _lastTick = DateTime.UtcNow; _animationTimer.Start(); PlayButton.Content = "⏸"; }
+        if (_animationTimer.IsEnabled) StopAnimationPlayback();
+        else { if (_playbackTime >= GetPlaybackDuration()) SeekPlayback(0); _lastTick = DateTime.UtcNow; ResetPlaybackFps(true); _animationTimer.Start(); PlayButton.Content = "⏸"; }
     }
 
     private void AnimationTimer_Tick(object? sender, EventArgs e)
@@ -1658,7 +1936,7 @@ public partial class MainWindow : Window
     private async void OpenRoot_Click(object s, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = "选择 DWORIGINS 游戏目录或资源目录", InitialDirectory = Directory.Exists(_root) ? _root : null };
-        if (dialog.ShowDialog(this) == true) { _root = dialog.FolderName; UpdateGameRootDisplay(); await ScanAsync(); }
+        if (dialog.ShowDialog(this) == true) { _root = dialog.FolderName; UpdateGameRootDisplay(); RefreshBlenderStatus(); await ScanAsync(); }
     }
 
     private async void ExportFiltered_Click(object s, RoutedEventArgs e)
@@ -1686,17 +1964,38 @@ public partial class MainWindow : Window
 
     private async void ExportModelFbx_Click(object s, RoutedEventArgs e)
     {
-        if (_model is null || _exporting) return;
+        if (_model is null || _exporting || !EnsureBlenderReady()) return;
         var fileName = Path.ChangeExtension(_modelAsset?.ExportFileName ?? "DWOrigins_model.g1m", ".fbx");
         var destination = ConfirmFixedExportPath("Model", fileName);
         if (destination is null) return;
+        var weaponName = Path.GetFileNameWithoutExtension(_weaponAsset?.ExportFileName ?? "weapon");
+        var weaponDestination = _weaponModel is null ? null
+            : Path.Combine(Path.GetDirectoryName(destination)!,
+                $"{Path.GetFileNameWithoutExtension(fileName)}_{weaponName}_weapon.fbx");
+        if (weaponDestination is not null && File.Exists(weaponDestination) && MessageBox.Show(this,
+                $"武器模型导出文件已存在：\n{weaponDestination}\n\n是否一起覆盖？",
+                "确认覆盖", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+        var model = _model;
+        var weaponModel = _weaponModel;
         BeginExportProgress();
         try
         {
-            var progress = new Progress<(string Stage, int Percent)>(ReportExportProgress);
-            await Task.Run(() => BlenderFbxExporter.Export(_model, null, destination,
-                Path.GetFileNameWithoutExtension(fileName), _root, includeGeometry: true, progress: progress));
-            StatusText.Text = "模型 FBX 导出完成：" + destination;
+            var modelProgress = new Progress<(string Stage, int Percent)>(value =>
+                ReportExportProgress(($"角色模型 · {value.Stage}", weaponModel is null ? value.Percent : value.Percent * 60 / 100)));
+            var weaponProgress = new Progress<(string Stage, int Percent)>(value =>
+                ReportExportProgress(($"武器模型 · {value.Stage}", 60 + value.Percent * 40 / 100)));
+            await Task.Run(() =>
+            {
+                BlenderFbxExporter.Export(model, null, destination,
+                    Path.GetFileNameWithoutExtension(fileName), _root, includeGeometry: true, progress: modelProgress);
+                if (weaponModel is not null && weaponDestination is not null)
+                    BlenderFbxExporter.Export(weaponModel, null, weaponDestination,
+                        weaponName, _root, includeGeometry: true, progress: weaponProgress);
+            });
+            StatusText.Text = weaponDestination is null
+                ? "角色模型 FBX 导出完成：" + destination
+                : $"角色模型与独立武器模型 FBX 导出完成：{Path.GetDirectoryName(destination)}";
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "FBX 导出失败", MessageBoxButton.OK, MessageBoxImage.Error); }
         finally { EndExportProgress(); }
@@ -1704,7 +2003,7 @@ public partial class MainWindow : Window
 
     private async void ExportAnimationFbx_Click(object s, RoutedEventArgs e)
     {
-        if (_model is null || _clip is null || _exporting) return;
+        if (_model is null || _clip is null || _exporting || !EnsureBlenderReady()) return;
         var modelName = Path.GetFileNameWithoutExtension(_modelAsset?.ExportFileName ?? "character");
         var animationName = Path.GetFileNameWithoutExtension(_animationAsset?.ExportFileName ?? "animation");
         var fileName = $"{modelName}_{animationName}.fbx";
@@ -1715,11 +2014,10 @@ public partial class MainWindow : Window
         {
             var progress = new Progress<(string Stage, int Percent)>(ReportExportProgress);
             await Task.Run(() => BlenderFbxExporter.Export(_model, _clip, destination, animationName, _root,
-                // UE applies a different root/unit conversion to a skeletal-only FBX.
-                // Keep the exact same skinned reference scene as the model export so
-                // model and animation always share the same scale and armature root.
-                // UE can import this as animation-only by disabling "Import Mesh".
-                includeGeometry: true, progress: progress));
+                // Animation FBX keeps only the skeleton hierarchy and animation
+                // curves. It contains no character mesh; UE binds it to the
+                // Skeleton already created by the separate model FBX.
+                includeGeometry: false, progress: progress));
             StatusText.Text = "角色动画 FBX 导出完成：" + destination;
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "FBX 导出失败", MessageBoxButton.OK, MessageBoxImage.Error); }
@@ -1728,28 +2026,33 @@ public partial class MainWindow : Window
 
     private async void ExportCameraFbx_Click(object s, RoutedEventArgs e)
     {
-        if (_actionCamera is null || _model is null || _clip is null || _exporting) return;
-        var fileName = $"{Path.GetFileNameWithoutExtension(_animationAsset?.ExportFileName ?? "action")}_camera.fbx";
+        if (_actionCamera is null || _model is null || _clip is null || _exporting || !EnsureBlenderReady()) return;
+        var actionName = Path.GetFileNameWithoutExtension(_animationAsset?.ExportFileName ?? "action");
+        var fileName = $"{actionName}_camera.fbx";
         var destination = ConfirmFixedExportPath("Camera", fileName);
         if (destination is null) return;
         // Capture on the UI thread.  The exported CineCamera filmback uses this
         // exact aspect so UE's horizontal FOV matches the visible tool preview.
         var exportAspectRatio = CameraViewportAspect;
+        var model = _model;
+        var clip = _clip;
+        var camera = _actionCamera;
         BeginExportProgress();
         try
         {
             string reportPath = "";
+            var cameraProgress = new Progress<(string Stage, int Percent)>(value =>
+                ReportExportProgress(($"镜头动画 · {value.Stage}", value.Percent)));
             await Task.Run(() =>
             {
-                // Export a real Blender FBX scene containing the same reference
-                // character, its action, and the animated camera.  UE Sequencer
-                // recognizes the camera track from the FBX Camera node; the old
-                // minimal ASCII camera-only writer was silently ignored by UE.
-                BlenderFbxExporter.Export(_model, _clip, destination,
+                // Camera export is intentionally camera-only. Character model,
+                // skeletal animation and weapon model have their own export
+                // buttons and must not be duplicated here.
+                BlenderFbxExporter.Export(model, clip, destination,
                     Path.GetFileNameWithoutExtension(fileName), _root,
-                    includeGeometry: false, camera: _actionCamera, cameraForUnrealSequencer: true,
-                    cameraAspectRatio: exportAspectRatio);
-                reportPath = FbxExporter.ExportActionCameraReport(_actionCamera, destination, exportAspectRatio);
+                    includeGeometry: false, camera: camera, cameraForUnrealSequencer: true,
+                    cameraAspectRatio: exportAspectRatio, progress: cameraProgress);
+                reportPath = FbxExporter.ExportActionCameraReport(camera, destination, exportAspectRatio);
             });
             StatusText.Text = $"镜头 FBX 与参数报告导出完成：{destination} · {reportPath}";
         }
