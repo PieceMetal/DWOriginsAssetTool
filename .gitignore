@@ -1,0 +1,37 @@
+# Build output
+bin/
+obj/
+publish*/
+
+# Generated exports and unpacked game resources
+DWOrigins_Exports/
+DWOrigins_Unpacked/
+*.fdata
+*.g1m
+*.g1mx
+*.g1a
+*.g2a
+*.g1s
+*.g2s
+*.g1t
+*.ktid
+
+# Local tools and reverse-engineering scratch data
+Tools/
+tmp*/
+*.zip
+*.7z
+*.rar
+
+# User and IDE files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

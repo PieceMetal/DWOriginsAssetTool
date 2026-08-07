@@ -1,0 +1,321 @@
+<Window x:Class="DWOriginsAssetTool.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:DWOriginsAssetTool"
+        Title="真三国无双：起源 · 资源工作台" Icon="Assets/app-icon.ico" Width="1560" Height="940" MinWidth="1200" MinHeight="740"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBrush}">
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="66"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
+
+    <!-- 顶部应用栏 -->
+    <Border Grid.Row="0" Background="#101620" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,0">
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <Border Width="40" Height="40" CornerRadius="9" Background="#211B10" BorderBrush="#594522" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,12,0">
+          <Image Source="Assets/app-icon.png" Width="30" Height="30" Stretch="Uniform"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="DYNASTY WARRIORS: ORIGINS" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="Bold"/>
+          <TextBlock Text="模型与动画资源工作台" FontSize="18" FontWeight="SemiBold" Margin="0,2,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+          <CheckBox x:Name="StartupHeroCheck" Content="启动显示主角" IsChecked="True" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="扫描完成后自动打开主角模型"/>
+          <Button Content="使用说明" Click="OpenUserGuide_Click" Style="{StaticResource GhostButtonStyle}"/>
+          <Button Content="正式名称目录" Click="OpenNameCatalog_Click" Style="{StaticResource GhostButtonStyle}"/>
+          <Button Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="4,0"/>
+          <Button Content="重新扫描" Click="Rescan_Click" Style="{StaticResource GhostButtonStyle}"/>
+          <Border Width="1" Height="24" Background="{StaticResource BorderBrush}" Margin="8,0"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="364"/><ColumnDefinition Width="5"/><ColumnDefinition Width="*"/><ColumnDefinition Width="5"/><ColumnDefinition Width="312"/></Grid.ColumnDefinitions>
+
+      <!-- 左侧资源浏览器 -->
+      <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="13,14,11,11">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <DockPanel Margin="2,0,2,11" LastChildFill="True">
+            <Border DockPanel.Dock="Right" MinWidth="148" Height="30" VerticalAlignment="Top" Margin="12,0,0,0" Background="#182332" BorderBrush="#33465D" BorderThickness="1" CornerRadius="7" Padding="10,0">
+              <TextBlock x:Name="CountText" Foreground="#AFC0D3" FontSize="10" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"/>
+            </Border>
+            <StackPanel>
+              <TextBlock Text="资源浏览器" FontSize="16" FontWeight="SemiBold"/>
+              <TextBlock Text="按正式名称、类型与资源域快速定位" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+            </StackPanel>
+          </DockPanel>
+
+          <Grid Grid.Row="1">
+            <TextBox x:Name="SearchBox" Style="{StaticResource SearchBoxStyle}" Height="36" Padding="35,7,10,7" TextChanged="Filter_Changed" ToolTip="按正式角色名、资源名、路径或底层 ID 搜索"/>
+            <Path Data="M9,16.5 L14.5,22 M17.5,11 A6.5,6.5 0 1 1 4.5,11 A6.5,6.5 0 1 1 17.5,11" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.5" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
+            <TextBlock Text="搜索主角、小兵或正式 ID…" Foreground="#657184" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+              <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+            </TextBlock>
+          </Grid>
+
+          <Grid Grid.Row="2" Margin="0,8,0,10">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="KindBox" SelectionChanged="Filter_Changed" SelectedIndex="0" Margin="0,0,5,0">
+              <ComboBoxItem Content="全部类型" Tag="All"/><ComboBoxItem Content="模型" Tag="Model"/><ComboBoxItem Content="动画" Tag="Animation"/>
+              <ComboBoxItem Content="骨架" Tag="Skeleton"/><ComboBoxItem Content="贴图" Tag="Texture"/><ComboBoxItem Content="材质" Tag="Material"/>
+              <ComboBoxItem Content="碰撞" Tag="Collision"/><ComboBoxItem Content="资源包" Tag="Package"/><ComboBoxItem Content="视频" Tag="Movie"/>
+            </ComboBox>
+            <ComboBox x:Name="DomainBox" Grid.Column="1" SelectionChanged="Filter_Changed" Margin="5,0,0,0"/>
+          </Grid>
+
+          <Border Grid.Row="3" Style="{StaticResource CardStyle}" Background="#0D121A" ClipToBounds="True">
+            <TreeView x:Name="AssetTree" SelectedItemChanged="AssetTree_SelectedItemChanged" MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded"
+                      Background="#0D121A" BorderThickness="0" Padding="4" VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+              <TreeView.ItemTemplate>
+                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                  <Grid Margin="2,3"><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Icon}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Background="#183B4C" BorderBrush="#2D7692" BorderThickness="1" CornerRadius="7" Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center">
+                      <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding HasCameraBadge}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Border.Style>
+                      <TextBlock Text="{Binding CameraBadge}" Foreground="#83D8F4" FontSize="9" FontWeight="SemiBold"/>
+                    </Border>
+                    <TextBlock Grid.Column="3" Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                  </Grid>
+                </HierarchicalDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </Border>
+        </Grid>
+      </Border>
+
+      <GridSplitter Grid.Column="1" Width="6" Background="#172231" HorizontalAlignment="Stretch" ResizeDirection="Columns" ShowsPreview="False"/>
+
+      <!-- 中央预览工作区 -->
+      <Grid Grid.Column="2" Background="{StaticResource WindowBrush}" Margin="10">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Style="{StaticResource CardStyle}" Background="#131A24" Padding="9" Margin="0,0,0,8">
+          <StackPanel>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="112"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="124"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="视图" VerticalAlignment="Center" Margin="2,0,6,0"/>
+              <ComboBox x:Name="ViewCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewportView_Changed">
+                <ComboBoxItem Content="透视"/><ComboBoxItem Content="前"/><ComboBoxItem Content="后"/><ComboBoxItem Content="左"/><ComboBoxItem Content="右"/><ComboBoxItem Content="顶"/><ComboBoxItem Content="底"/>
+              </ComboBox>
+              <Button Grid.Column="2" Content="全部取景 (F)" Click="ResetView_Click" Padding="10,7"/>
+              <TextBlock Grid.Column="3" Text="显示" VerticalAlignment="Center" Margin="12,0,6,0"/>
+              <ComboBox x:Name="RenderModeCombo" Grid.Column="4" SelectedIndex="1" SelectionChanged="RenderMode_Changed">
+                <ComboBoxItem Content="材质"/><ComboBoxItem Content="实体"/><ComboBoxItem Content="线框"/>
+              </ComboBox>
+              <Border Grid.Column="6" Background="#112332" BorderBrush="#24465D" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,2,0" VerticalAlignment="Center"><TextBlock x:Name="ViewportStats" Text="G1M VIEWPORT" Foreground="#83CFF4" FontSize="10" FontWeight="SemiBold"/></Border>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Margin="2,7,0,0">
+              <CheckBox x:Name="GridCheck" Content="网格 (G)" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
+              <CheckBox x:Name="AxesCheck" Content="坐标轴" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
+              <CheckBox x:Name="SkeletonCheck" Content="显示骨骼 (B)" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
+              <CheckBox x:Name="CameraGizmoCheck" Content="显示动画摄像机" Click="CameraGizmo_Changed" IsEnabled="False" ToolTip="自由镜头下显示动画摄像机的位置、朝向和视锥"/>
+              <CheckBox x:Name="CameraTrajectoryCheck" Content="镜头轨迹" Click="CameraTrajectory_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="自由镜头下显示整段摄像机运动路径；绿色为起点，红色为终点，黄色为当前帧"/>
+              <CheckBox x:Name="CameraDataCheck" Content="镜头数据" Click="CameraData_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="在视口实时显示当前动作镜头的机位、目标、FOV、景别距离和速度"/>
+              <CheckBox x:Name="WeaponCheck" Content="显示配件" Click="WeaponCheck_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="在配件编辑器中添加并设置独立配件模型"/>
+              <TextBlock x:Name="PreviewSummary" Text="尚未加载资源" Foreground="{StaticResource MutedBrush}" Margin="18,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Background="#080D13" BorderBrush="#303D4D" ClipToBounds="True">
+          <Grid ClipToBounds="True">
+            <Viewport3D x:Name="Viewport" ClipToBounds="True" SizeChanged="Viewport_SizeChanged">
+              <Viewport3D.Camera>
+                <PerspectiveCamera x:Name="ViewportCamera" FieldOfView="42"/>
+              </Viewport3D.Camera>
+            </Viewport3D>
+            <local:WireframeOverlay x:Name="WireframeLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
+            <Canvas x:Name="ViewportOverlay" Background="Transparent" IsHitTestVisible="False"/>
+            <!-- 与 RE 工具一致：透明输入层覆盖整个 3D 视口，空白处也能捕获拖动和滚轮。 -->
+            <Border x:Name="ViewportInput" Background="#01000000" Focusable="True" Cursor="Arrow"
+                    MouseWheel="Viewport_MouseWheel" MouseMove="Viewport_MouseMove"
+                    MouseDown="Viewport_MouseDown" MouseUp="Viewport_MouseUp" KeyDown="ViewportInput_KeyDown"/>
+            <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Border Width="64" Height="64" CornerRadius="16" Background="#171F2B" HorizontalAlignment="Center">
+                <Grid><Path Data="M4,7 L12,3 L20,7 L12,11 Z M4,7 L4,17 L12,21 L12,11 M20,7 L20,17 L12,21" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Width="30" Height="30" Stretch="Uniform"/></Grid>
+              </Border>
+              <TextBlock Text="选择一个模型或动画" HorizontalAlignment="Center" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,0"/>
+              <TextBlock Text="支持 G1M 网格、骨架和 G1A / G2A 动画预览" HorizontalAlignment="Center" Margin="0,7" Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
+
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="12" Padding="11,6" IsHitTestVisible="False">
+              <StackPanel Orientation="Horizontal"><Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Margin="0,0,7,0"/><TextBlock x:Name="ViewportHint" Text="左键旋转 · 右键平移 · 中键平移 · Alt+中键旋转 · 滚轮缩放" Foreground="#BAC4D2" FontSize="11"/></StackPanel>
+            </Border>
+            <Border x:Name="CameraDataHud" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14" Width="292"
+                    Background="#E8131A24" BorderBrush="#3B6A7C" BorderThickness="1" CornerRadius="8" Padding="11,9"
+                    IsHitTestVisible="False" Visibility="Collapsed">
+              <StackPanel>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="实时镜头参数" Foreground="#83CFF4" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="CameraHudMode" Grid.Column="1" Foreground="#F1BE48" FontSize="10" VerticalAlignment="Center"/>
+                </Grid>
+                <TextBlock x:Name="CameraHudText" Margin="0,6,0,0" Foreground="#D6DEE9" FontFamily="Consolas" FontSize="11" LineHeight="17" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14" Width="92" Height="92" Background="#DF131A24" BorderBrush="#3B495D" BorderThickness="1" CornerRadius="8" IsHitTestVisible="False">
+              <Canvas Width="90" Height="90">
+                <Line x:Name="WorldAxisX" X1="45" Y1="58" X2="17" Y2="67" Stroke="#EF5350" StrokeThickness="4"/>
+                <Line x:Name="WorldAxisY" X1="45" Y1="58" X2="22" Y2="50" Stroke="#4CD964" StrokeThickness="4"/>
+                <Line x:Name="WorldAxisZ" X1="45" Y1="58" X2="45" Y2="24" Stroke="#4A90E2" StrokeThickness="4"/>
+                <Ellipse Canvas.Left="41" Canvas.Top="54" Width="8" Height="8" Fill="#E5E9EF"/>
+                <TextBlock x:Name="WorldAxisXLabel" Text="X" Foreground="#FF7673" FontWeight="Bold"/>
+                <TextBlock x:Name="WorldAxisYLabel" Text="Y" Foreground="#63E77A" FontWeight="Bold"/>
+                <TextBlock x:Name="WorldAxisZLabel" Text="Z" Foreground="#6BA8EE" FontWeight="Bold"/>
+              </Canvas>
+            </Border>
+            <Border x:Name="PlaybackOverlay" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="108,0,12,12" Padding="8,7" Background="#E018202B" BorderBrush="#536174" BorderThickness="1" CornerRadius="5" Visibility="Collapsed">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Button x:Name="PlayButton" Content="▶" Click="PlayAnimation_Click" IsEnabled="False" Width="36" Height="30" Padding="0" Margin="0,0,8,0"/>
+                <ComboBox x:Name="CameraModeCombo" Grid.Column="1" Width="142" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed" Margin="0,0,8,0">
+                  <ComboBoxItem Content="自由镜头"/><ComboBoxItem x:Name="LinkedCameraModeItem" Content="无动画镜头"/>
+                </ComboBox>
+                <Slider x:Name="AnimationSlider" Grid.Column="2" Minimum="0" Maximum="1" Value="0" IsEnabled="False" IsMoveToPointEnabled="True" ValueChanged="AnimationSlider_ValueChanged" PreviewMouseLeftButtonDown="AnimationSlider_PreviewMouseLeftButtonDown"/>
+                <TextBlock x:Name="TimelineText" Grid.Column="3" Text="0.00 / 0.00 s" Foreground="#9CDCFE" VerticalAlignment="Center" MinWidth="105" TextAlignment="Right" Margin="8,0,0,0"/>
+              </Grid>
+            </Border>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <GridSplitter Grid.Column="3" Width="6" Background="#172231" HorizontalAlignment="Stretch" ResizeDirection="Columns" ShowsPreview="False"/>
+
+      <!-- 右侧检查器 -->
+      <Border Grid.Column="4" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <Border Padding="14,14,14,12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <StackPanel>
+              <TextBlock Text="资源检查器" Style="{StaticResource SectionTitleStyle}"/>
+              <TextBlock x:Name="DetailTitle" Text="未选择资源" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" Margin="0,9,0,4" TextWrapping="Wrap"/>
+              <TextBlock x:Name="DetailPath" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" LineHeight="17"/>
+            </StackPanel>
+          </Border>
+
+          <TabControl Grid.Row="1" Style="{StaticResource InspectorTabControlStyle}">
+            <TabItem Header="效果预览器" Style="{StaticResource InspectorTabItemStyle}">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12,14">
+                  <TextBlock Text="快捷预览" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,10"/>
+                  <Border Style="{StaticResource CardStyle}" Background="#111821" Padding="12">
+                    <StackPanel>
+                      <TextBlock Text="角色" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                      <ComboBox x:Name="QuickCharacterBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickCharacter_Changed" IsEnabled="False" Margin="0,0,0,9"/>
+                      <TextBlock Text="默认武器" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                      <ComboBox x:Name="QuickWeaponBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickWeapon_Changed" IsEnabled="False" Margin="0,0,0,9"/>
+                      <TextBlock Text="动画" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                      <ComboBox x:Name="QuickAnimationBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickAnimation_Changed" IsEnabled="False"/>
+                    </StackPanel>
+                  </Border>
+                  <TextBlock x:Name="QuickPreviewHint" Text="扫描完成后可按角色、武器和动作快速预览。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"/>
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
+            <TabItem Header="资源信息" Style="{StaticResource InspectorTabItemStyle}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12,14">
+              <TextBlock Text="动画镜头" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,10"/>
+              <Border x:Name="ActionCameraCard" Style="{StaticResource CardStyle}" Background="#111821" Padding="12">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ActionCameraTitle" Text="未选择骨骼动画" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <Border Grid.Column="1" Background="#202A38" BorderBrush="#3A485C" BorderThickness="1" CornerRadius="8" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Top">
+                      <TextBlock x:Name="ActionCameraStatus" Text="未检测" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                    </Border>
+                  </Grid>
+                  <TextBlock x:Name="ActionCameraDetail" Text="选择一个角色动作后，这里会显示它是否直接关联游戏镜头。" Foreground="#C7D0DC" FontSize="11" LineHeight="18" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                </StackPanel>
+              </Border>
+              <TextBlock Text="格式信息" Style="{StaticResource SectionTitleStyle}" Margin="0,18,0,10"/>
+              <Border Style="{StaticResource CardStyle}" Background="#131A24" Padding="12">
+                <TextBlock x:Name="DetailBody" Text="扫描完成后选择资源以查看格式信息。" TextWrapping="Wrap" LineHeight="23" Foreground="#C7D0DC"/>
+              </Border>
+              <TextBlock Text="关联与分类" Style="{StaticResource SectionTitleStyle}" Margin="0,18,0,10"/>
+              <Border Style="{StaticResource CardStyle}" Background="#131A24" Padding="12">
+                <TextBlock x:Name="RelationBody" Text="工具按资源域和哈希 ID 保留归属；模型、动画、骨架、贴图分别归类。" TextWrapping="Wrap" Foreground="#C7D0DC" LineHeight="22"/>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+            </TabItem>
+            <TabItem Header="骨骼树" Style="{StaticResource InspectorTabItemStyle}">
+              <Grid Margin="10,12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="模型骨骼层级" FontWeight="SemiBold"/><TextBlock x:Name="BoneSummaryText" Grid.Column="1" Text="未加载" Foreground="{StaticResource MutedBrush}"/></Grid>
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Background="#111821" Margin="0,10,0,8">
+                  <TreeView x:Name="BoneTree" Background="#111821" BorderThickness="0">
+                    <TreeView.ItemTemplate><HierarchicalDataTemplate ItemsSource="{Binding Children}"><Grid Margin="2,2"><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◇" Foreground="#72AEE6"/><TextBlock Grid.Column="1" Text="{Binding Name}"/><TextBlock Grid.Column="2" Text="{Binding Badge}" Foreground="{StaticResource AccentBrush}" FontSize="10"/></Grid></HierarchicalDataTemplate></TreeView.ItemTemplate>
+                  </TreeView>
+                </Border>
+                <TextBlock Grid.Row="2" Text="G1M 未提供可验证的字符串骨骼名，因此按原始全局骨骼编号显示；L 为模型局部编号。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11"/>
+              </Grid>
+            </TabItem>
+            <TabItem Header="配件编辑器" Style="{StaticResource InspectorTabItemStyle}">
+              <Grid Margin="10,12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <StackPanel>
+                  <TextBlock Text="添加配件" FontWeight="SemiBold"/>
+                  <TextBlock Text="人物与配件保持为两个独立模型。配件自身骨骼只用于确定对齐点，不会与人物蒙皮合并。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11" Margin="0,5,0,9"/>
+                </StackPanel>
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Background="#111821" Padding="10" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="当前配件" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                    <TextBlock x:Name="AccessoryNameText" Text="未添加" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                      <Button Grid.Column="0" Content="添加选中模型" Click="AddSelectedAccessory_Click" Margin="0,0,4,0"/>
+                      <Button Grid.Column="1" Content="移除配件" Click="RemoveAccessory_Click" Margin="4,0,0,0"/>
+                    </Grid>
+                    <Button Content="按游戏配置自动适配" Click="AutoFitAccessory_Click" Margin="0,8,0,0" Style="{StaticResource AccentButtonStyle}"/>
+                  </StackPanel>
+                </Border>
+                <Grid Grid.Row="2" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0" Margin="0,0,4,0"><TextBlock Text="配件自身骨骼" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/><ComboBox x:Name="AccessorySourceBoneCombo" SelectionChanged="AccessoryBone_Changed" IsEnabled="False" DisplayMemberPath="DisplayName"/></StackPanel>
+                  <StackPanel Grid.Column="1" Margin="4,0,0,0"><TextBlock Text="人物目标骨骼" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/><ComboBox x:Name="AccessoryTargetBoneCombo" SelectionChanged="AccessoryBone_Changed" IsEnabled="False" DisplayMemberPath="DisplayName"/></StackPanel>
+                </Grid>
+                <TextBlock Grid.Row="3" Text="位置偏移 X / Y / Z" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,2,0,4"/>
+                <Grid Grid.Row="4" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                  <TextBox x:Name="AccessoryPosX" Text="0" TextChanged="AccessoryTransform_Changed" Margin="0,0,3,0"/><TextBox x:Name="AccessoryPosY" Grid.Column="1" Text="0" TextChanged="AccessoryTransform_Changed" Margin="3,0"/><TextBox x:Name="AccessoryPosZ" Grid.Column="2" Text="0" TextChanged="AccessoryTransform_Changed" Margin="3,0,0,0"/>
+                </Grid>
+                <StackPanel Grid.Row="5">
+                  <TextBlock Text="旋转 X / Y / Z（度）" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                  <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <TextBox x:Name="AccessoryRotX" Text="0" TextChanged="AccessoryTransform_Changed" Margin="0,0,3,0"/><TextBox x:Name="AccessoryRotY" Grid.Column="1" Text="0" TextChanged="AccessoryTransform_Changed" Margin="3,0"/><TextBox x:Name="AccessoryRotZ" Grid.Column="2" Text="0" TextChanged="AccessoryTransform_Changed" Margin="3,0,0,0"/>
+                  </Grid>
+                  <TextBlock Text="统一缩放" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
+                  <TextBox x:Name="AccessoryScale" Text="1" TextChanged="AccessoryTransform_Changed"/>
+                  <TextBlock x:Name="AccessoryMappingText" Text="添加配件后显示骨骼对齐关系" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="10" Margin="0,9,0,0"/>
+                </StackPanel>
+              </Grid>
+            </TabItem>
+          </TabControl>
+
+          <Border Grid.Row="2" Background="#141B25" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="11">
+            <StackPanel>
+              <Border x:Name="ExportProgressPanel" Visibility="Collapsed" Background="#182332" BorderBrush="#33465D" BorderThickness="1" CornerRadius="7" Padding="9" Margin="0,0,0,8">
+                <StackPanel>
+                  <TextBlock x:Name="ExportProgressText" Text="准备导出" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,5"/>
+                  <ProgressBar x:Name="ExportProgressBar" Height="7" Minimum="0" Maximum="100" Value="0" IsHitTestVisible="False"/>
+                </StackPanel>
+              </Border>
+              <Button x:Name="ExportModelFbxButton" Content="导出当前模型 FBX" Click="ExportModelFbx_Click" HorizontalAlignment="Stretch" IsEnabled="False" Margin="0,0,0,7"/>
+              <Button x:Name="ExportAnimationFbxButton" Content="导出角色动画 FBX" Click="ExportAnimationFbx_Click" HorizontalAlignment="Stretch" IsEnabled="False" Margin="0,0,0,7" ToolTip="导出带参考网格的角色动画；导入 UE 时选择目标骨架并取消“导入网格”，以保持模型与动画单位一致。"/>
+              <Button x:Name="ExportCameraFbxButton" Content="导出镜头动画 FBX" Click="ExportCameraFbx_Click" HorizontalAlignment="Stretch" IsEnabled="False" Margin="0,0,0,7"/>
+              <Button Content="打开导出文件夹" Click="OpenExportsFolder_Click" HorizontalAlignment="Stretch" Margin="0,0,0,7" Style="{StaticResource AccentButtonStyle}"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- 状态栏 -->
+    <Border Grid.Row="2" Background="#0D1219" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,0">
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Ellipse Width="7" Height="7" Fill="#58C68B" Margin="0,0,8,0"/>
+          <TextBlock x:Name="StatusText" Text="准备就绪" Foreground="#AAB5C5" FontSize="11"/>
+        </StackPanel>
+        <TextBlock Grid.Column="1" Text="PDRK / G1M / G1A" Foreground="#626F82" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
