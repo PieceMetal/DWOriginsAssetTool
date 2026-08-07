@@ -123,7 +123,7 @@ public sealed class ResourceTreeNode
             owner.StartsWith("E", StringComparison.OrdinalIgnoreCase) ? "事件" : "已命名资源";
 
     private static string CharacterGroup(string owner) => owner.StartsWith("H0100_", StringComparison.OrdinalIgnoreCase)
-        ? "主角" : owner.StartsWith("H02", StringComparison.OrdinalIgnoreCase) ? "小兵" : "武将/角色";
+        ? "紫鸾" : owner.StartsWith("H02", StringComparison.OrdinalIgnoreCase) ? "小兵" : "武将/角色";
 
     private static bool IsFormalOwner(string value) => value.StartsWith("HW", StringComparison.OrdinalIgnoreCase) ||
         value.Length > 1 && (value[0] is 'H' or 'W' or 'S' or 'E') && char.IsDigit(value[1]);
@@ -144,7 +144,7 @@ public sealed class ResourceTreeNode
 
     private static int FolderOrder(string name) => name switch
     {
-        "主角" => 0, "武将/角色" => 1, "小兵" => 2,
+        "紫鸾" => 0, "武将/角色" => 1, "小兵" => 2,
         "模型" => 4, "动画" => 5, "骨骼" => 6, "贴图" => 7, "材质" => 8, _ => 20
     };
 

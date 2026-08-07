@@ -19,7 +19,7 @@
           <TextBlock Text="模型与动画资源工作台" FontSize="18" FontWeight="SemiBold" Margin="0,2,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-          <CheckBox x:Name="StartupHeroCheck" Content="启动显示主角" IsChecked="True" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="扫描完成后自动打开主角模型"/>
+          <CheckBox x:Name="StartupHeroCheck" Content="启动显示紫鸾" IsChecked="True" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="扫描完成后自动打开紫鸾模型"/>
           <Button Content="使用说明" Click="OpenUserGuide_Click" Style="{StaticResource GhostButtonStyle}"/>
           <Button Content="正式名称目录" Click="OpenNameCatalog_Click" Style="{StaticResource GhostButtonStyle}"/>
           <Border Width="1" Height="24" Background="{StaticResource BorderBrush}" Margin="8,0"/>
@@ -63,7 +63,7 @@
           <Grid Grid.Row="2">
             <TextBox x:Name="SearchBox" Style="{StaticResource SearchBoxStyle}" Height="36" Padding="35,7,10,7" TextChanged="Filter_Changed" ToolTip="按正式角色名、资源名、路径或底层 ID 搜索"/>
             <Path Data="M9,16.5 L14.5,22 M17.5,11 A6.5,6.5 0 1 1 4.5,11 A6.5,6.5 0 1 1 17.5,11" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.5" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
-            <TextBlock Text="搜索主角、小兵或正式 ID…" Foreground="#657184" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+            <TextBlock Text="搜索紫鸾、小兵或正式 ID…" Foreground="#657184" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
               <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
             </TextBlock>
           </Grid>
@@ -218,7 +218,9 @@
                       <TextBlock Text="默认武器" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
                       <ComboBox x:Name="QuickWeaponBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickWeapon_Changed" IsEnabled="False" Margin="0,0,0,9"/>
                       <TextBlock Text="动画" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4"/>
-                      <ComboBox x:Name="QuickAnimationBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickAnimation_Changed" IsEnabled="False"/>
+                      <ComboBox x:Name="QuickAnimationBox" DisplayMemberPath="DisplayName" SelectionChanged="QuickAnimation_Changed" IsEnabled="False" Margin="0,0,0,10"/>
+                      <Button x:Name="LoadQuickPreviewButton" Content="加载快捷预览" Click="LoadQuickPreview_Click"
+                              Style="{StaticResource AccentButtonStyle}" IsEnabled="False" HorizontalAlignment="Stretch" Margin="0"/>
                     </StackPanel>
                   </Border>
                   <TextBlock x:Name="QuickPreviewHint" Text="扫描完成后可按角色、武器和动作快速预览。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11" Margin="0,10,0,0"/>

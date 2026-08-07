@@ -321,6 +321,7 @@ public partial class MainWindow : Window
         _updatingQuickPreview = true;
         QuickCharacterBox.ItemsSource = _quickCharacters.Values.ToList();
         QuickCharacterBox.IsEnabled = _quickCharacters.Count > 0;
+        LoadQuickPreviewButton.IsEnabled = _quickCharacters.Count > 0;
         QuickCharacterBox.SelectedItem = _quickCharacters.Values
             .FirstOrDefault(x => x.Id.Equals("H0100_Hero0", StringComparison.OrdinalIgnoreCase))
             ?? _quickCharacters.Values.FirstOrDefault();
@@ -399,6 +400,33 @@ public partial class MainWindow : Window
     {
         if (_updatingQuickPreview || QuickAnimationBox.SelectedItem is not QuickAnimationChoice choice) return;
         await PreviewAssetAsync(choice.Animation);
+    }
+
+    private async void LoadQuickPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updatingQuickPreview || QuickCharacterBox.SelectedItem is not QuickCharacterChoice character) return;
+        var weapon = QuickWeaponBox.SelectedItem as QuickWeaponChoice;
+        var animation = QuickAnimationBox.SelectedItem as QuickAnimationChoice;
+
+        _updatingQuickPreview = true;
+        LoadQuickPreviewButton.IsEnabled = false;
+        try
+        {
+            // Force the complete selected combination back into the viewport.
+            // This deliberately does not depend on SelectionChanged, so it also
+            // works after previewing an unrelated asset from the left tree.
+            await PreviewAssetAsync(character.Model);
+            if (weapon is not null) await LoadAccessoryAssetAsync(weapon.Model);
+            if (animation is not null) await PreviewAssetAsync(animation.Animation);
+            StatusText.Text = animation is null
+                ? $"已重新加载 {character.DisplayName} 与当前武器"
+                : $"已重新加载 {character.DisplayName}、当前武器与动画";
+        }
+        finally
+        {
+            _updatingQuickPreview = false;
+            LoadQuickPreviewButton.IsEnabled = _quickCharacters.Count > 0;
+        }
     }
 
     private void AssetTree_Expanded(object sender, RoutedEventArgs e)
@@ -1464,7 +1492,7 @@ public partial class MainWindow : Window
         if (!IsLoaded) return;
         (_yaw, _pitch) = ViewCombo.SelectedIndex switch
         {
-            1 => (Math.PI, 0), 2 => (0, 0), 3 => (Math.PI / 2, 0), 4 => (-Math.PI / 2, 0),
+            1 => (0, 0), 2 => (Math.PI, 0), 3 => (-Math.PI / 2, 0), 4 => (Math.PI / 2, 0),
             5 => (0, Math.PI / 2 - .001), 6 => (0, -Math.PI / 2 + .001), _ => (-.38, .35)
         };
         QueueCameraUpdate();

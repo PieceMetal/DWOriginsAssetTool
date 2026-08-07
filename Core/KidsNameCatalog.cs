@@ -150,7 +150,7 @@ public static partial class KidsNameCatalogReader
 
     private static string Classify(string name)
     {
-        if (HeroRegex().IsMatch(name)) return "主角";
+        if (HeroRegex().IsMatch(name)) return "紫鸾";
         if (SoldierRegex().IsMatch(name)) return "小兵";
         if (OfficerRegex().IsMatch(name)) return "武将/角色";
         if (name.StartsWith('S') && StageRegex().IsMatch(name)) return "关卡";
@@ -173,7 +173,7 @@ public static partial class KidsNameCatalogReader
 
     private static int CategoryOrder(string category) => category switch
     {
-        "主角" => 0, "武将/角色" => 1, "小兵" => 2, "动作/动画" => 3,
+        "紫鸾" => 0, "武将/角色" => 1, "小兵" => 2, "动作/动画" => 3,
         "模型" => 4, "武器" => 5, "关卡" => 6, _ => 20
     };
 
