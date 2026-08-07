@@ -1,6 +1,7 @@
 import bpy
 import sys
 import json
+import math
 from mathutils import Matrix, Vector
 
 args = sys.argv[sys.argv.index('--') + 1:]
@@ -18,6 +19,14 @@ bpy.context.scene.render.fps = 60
 bpy.context.scene.render.fps_base = 1.0
 bpy.context.scene.frame_start = 0
 bpy.ops.import_scene.gltf(filepath=source)
+
+# Blender's factory scene ends at frame 250. The FBX exporter bakes only the
+# scene range, so long 60 FPS actions were silently cut to 250 frames. Expand
+# the scene to the complete imported Action before exporting any asset type.
+action_end = max((action.frame_range[1] for action in bpy.data.actions), default=0.0)
+if action_end > 0:
+    bpy.context.scene.frame_end = max(1, int(math.ceil(action_end)))
+
 # Blender's glTF importer can create a helper mesh for an armature even when
 # the source intentionally contains no mesh data. Animation-only FBX must have
 # zero mesh objects, so distinguish that mode from a real model by inspecting
@@ -37,7 +46,6 @@ if armatures:
     primary_armature.name = 'Armature'
     primary_armature.data.name = 'Armature'
 if len(args) == 3:
-    import math
     with open(args[2], 'r', encoding='utf-8') as f:
         camera_data = json.load(f)
     cameras = [o for o in bpy.context.scene.objects if o.type == 'CAMERA']

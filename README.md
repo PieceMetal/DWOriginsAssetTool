@@ -4,7 +4,7 @@
 
 项目定位是研究、预览和导出。它不包含游戏本体、解包资源或导出资源，也不提供游戏资源传播服务。
 
-## [⬇ 下载 v1.0.0（Windows x64）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool-v1.0.0-win-x64.zip)
+## [⬇ 下载 v1.0.1（Windows x64）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool-v1.0.1-win-x64.zip)
 
 ## 安装
 
@@ -13,7 +13,11 @@
 3. 首次启动后点击高亮的“选择游戏目录”，选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录。
 4. 模型、动画和镜头 FBX 导出需要安装 [Blender](https://store.steampowered.com/app/365670/Blender/)；工具会自动检测 Steam 版，也可以手动选择 `blender.exe`。
 
-当前版本：`v1.0.0`
+当前版本：`v1.0.1`
+
+## v1.0.1 更新
+
+- 修复超过 250 帧的角色动画在 FBX 导出时被 Blender 默认场景范围截断的问题；现在按完整 Action 范围导出，保持游戏原始 60 FPS 与完整动画时长。
 
 ## v1.0.0 功能
 
