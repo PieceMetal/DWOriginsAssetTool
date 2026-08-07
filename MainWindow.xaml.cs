@@ -127,7 +127,7 @@ public partial class MainWindow : Window
             if (!UserPreferences.HideStartupGuide)
                 ShowUserGuide();
             var guessed = FindGameRoot(AppContext.BaseDirectory) ?? FindGameRoot(Environment.CurrentDirectory);
-            if (guessed is not null) { _root = guessed; await ScanAsync(); }
+            if (guessed is not null) { _root = guessed; UpdateGameRootDisplay(); await ScanAsync(); }
         };
     }
 
@@ -1583,6 +1583,19 @@ public partial class MainWindow : Window
     private void Filter_Changed(object s, EventArgs e) => ApplyFilter();
     private async void Rescan_Click(object s, RoutedEventArgs e) => await ScanAsync();
 
+    private void UpdateGameRootDisplay()
+    {
+        if (string.IsNullOrWhiteSpace(_root))
+        {
+            GameRootText.Text = "尚未选择游戏目录";
+            GameRootText.ToolTip = null;
+            return;
+        }
+
+        GameRootText.Text = new DirectoryInfo(_root).Name;
+        GameRootText.ToolTip = _root;
+    }
+
     private void OpenUserGuide_Click(object s, RoutedEventArgs e) => ShowUserGuide();
 
     private void ShowUserGuide()
@@ -1617,7 +1630,7 @@ public partial class MainWindow : Window
     private async void OpenRoot_Click(object s, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = "选择 DWORIGINS 游戏目录或资源目录", InitialDirectory = Directory.Exists(_root) ? _root : null };
-        if (dialog.ShowDialog(this) == true) { _root = dialog.FolderName; await ScanAsync(); }
+        if (dialog.ShowDialog(this) == true) { _root = dialog.FolderName; UpdateGameRootDisplay(); await ScanAsync(); }
     }
 
     private async void ExportFiltered_Click(object s, RoutedEventArgs e)

@@ -22,8 +22,6 @@
           <CheckBox x:Name="StartupHeroCheck" Content="启动显示主角" IsChecked="True" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="扫描完成后自动打开主角模型"/>
           <Button Content="使用说明" Click="OpenUserGuide_Click" Style="{StaticResource GhostButtonStyle}"/>
           <Button Content="正式名称目录" Click="OpenNameCatalog_Click" Style="{StaticResource GhostButtonStyle}"/>
-          <Button Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="4,0"/>
-          <Button Content="重新扫描" Click="Rescan_Click" Style="{StaticResource GhostButtonStyle}"/>
           <Border Width="1" Height="24" Background="{StaticResource BorderBrush}" Margin="8,0"/>
         </StackPanel>
       </Grid>
@@ -35,7 +33,7 @@
       <!-- 左侧资源浏览器 -->
       <Border Grid.Column="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="13,14,11,11">
         <Grid>
-          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
           <DockPanel Margin="2,0,2,11" LastChildFill="True">
             <Border DockPanel.Dock="Right" MinWidth="148" Height="30" VerticalAlignment="Top" Margin="12,0,0,0" Background="#182332" BorderBrush="#33465D" BorderThickness="1" CornerRadius="7" Padding="10,0">
               <TextBlock x:Name="CountText" Foreground="#AFC0D3" FontSize="10" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"/>
@@ -46,7 +44,23 @@
             </StackPanel>
           </DockPanel>
 
-          <Grid Grid.Row="1">
+          <Border Grid.Row="1" Background="#151D28" BorderBrush="#334257" BorderThickness="1" CornerRadius="7" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+              <Grid Margin="1,0,1,8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Text="游戏资源" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="GameRootText" Grid.Column="1" Text="尚未选择游戏目录" Foreground="{StaticResource MutedBrush}" FontSize="10"
+                           TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0,0,0"/>
+              </Grid>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/></Grid.ColumnDefinitions>
+                <Button Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="0,0,5,0" Padding="12,8"/>
+                <Button Grid.Column="1" Content="重新扫描" Click="Rescan_Click" Style="{StaticResource GhostButtonStyle}" Margin="5,0,0,0" Padding="10,8"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Grid Grid.Row="2">
             <TextBox x:Name="SearchBox" Style="{StaticResource SearchBoxStyle}" Height="36" Padding="35,7,10,7" TextChanged="Filter_Changed" ToolTip="按正式角色名、资源名、路径或底层 ID 搜索"/>
             <Path Data="M9,16.5 L14.5,22 M17.5,11 A6.5,6.5 0 1 1 4.5,11 A6.5,6.5 0 1 1 17.5,11" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.5" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
             <TextBlock Text="搜索主角、小兵或正式 ID…" Foreground="#657184" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
@@ -54,7 +68,7 @@
             </TextBlock>
           </Grid>
 
-          <Grid Grid.Row="2" Margin="0,8,0,10">
+          <Grid Grid.Row="3" Margin="0,8,0,10">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
             <ComboBox x:Name="KindBox" SelectionChanged="Filter_Changed" SelectedIndex="0" Margin="0,0,5,0">
               <ComboBoxItem Content="全部类型" Tag="All"/><ComboBoxItem Content="模型" Tag="Model"/><ComboBoxItem Content="动画" Tag="Animation"/>
@@ -64,7 +78,7 @@
             <ComboBox x:Name="DomainBox" Grid.Column="1" SelectionChanged="Filter_Changed" Margin="5,0,0,0"/>
           </Grid>
 
-          <Border Grid.Row="3" Style="{StaticResource CardStyle}" Background="#0D121A" ClipToBounds="True">
+          <Border Grid.Row="4" Style="{StaticResource CardStyle}" Background="#0D121A" ClipToBounds="True">
             <TreeView x:Name="AssetTree" SelectedItemChanged="AssetTree_SelectedItemChanged" MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded"
                       Background="#0D121A" BorderThickness="0" Padding="4" VirtualizingPanel.IsVirtualizing="True"
                       VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.HorizontalScrollBarVisibility="Auto">
