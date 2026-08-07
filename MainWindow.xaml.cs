@@ -137,7 +137,12 @@ public partial class MainWindow : Window
             if (!UserPreferences.HideStartupGuide)
                 ShowUserGuide();
             var guessed = FindGameRoot(AppContext.BaseDirectory) ?? FindGameRoot(Environment.CurrentDirectory);
-            if (guessed is not null) { _root = guessed; UpdateGameRootDisplay(); RefreshBlenderStatus(); await ScanAsync(); }
+            if (guessed is not null)
+            {
+                _root = guessed; UpdateGameRootDisplay(); RefreshBlenderStatus();
+                UpdateResourceInitializationState();
+                await ScanAsync();
+            }
             else RefreshBlenderStatus();
         };
     }
@@ -204,7 +209,103 @@ public partial class MainWindow : Window
             await ApplyStartupPreviewAsync();
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "扫描失败", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "扫描失败"; }
-        finally { IsEnabled = true; }
+        finally { IsEnabled = true; UpdateResourceInitializationState(); }
+    }
+
+    private void UpdateResourceInitializationState()
+    {
+        if (InitializeResourcesButton is null) return;
+        var hasRoot = !string.IsNullOrWhiteSpace(_root) && Directory.Exists(_root);
+        var complete = hasRoot && GameResourceInitializer.IsComplete(_root);
+        InitializationRequiredPanel.Visibility = complete ? Visibility.Collapsed : Visibility.Visible;
+        FirstUseStepsText.Visibility = complete ? Visibility.Collapsed : Visibility.Visible;
+        InitializeResourcesButton.IsEnabled = hasRoot && !_exporting;
+        InitializeResourcesButton.Content = hasRoot ? "立即初始化完整游戏资源（必选）" : "先完成第 1 步：选择游戏目录";
+        InitializationRequiredText.Text = hasRoot
+            ? "游戏目录已选择。请继续初始化，完成后才能获得正式名称、角色/武器/动画分类和镜头关联。"
+            : "请先选择包含 DWORIGINS.exe 的游戏目录，然后继续初始化完整游戏资源。";
+    }
+
+    private async void InitializeResources_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_root) || _exporting) return;
+        var packages = GameResourceInitializer.FindPackages(_root);
+        if (packages.Count == 0)
+        {
+            MessageBox.Show(this, "当前目录没有找到游戏 FData 资源包，请重新选择包含 DWORIGINS.exe 的游戏根目录。",
+                "无法初始化", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var answer = MessageBox.Show(this,
+            $"将从游戏本体的 {packages.Count:N0} 个资源包恢复完整目录。\n\n" +
+            "完成后会自动恢复正式名称、角色/武器/动画分类、动作表归属和镜头关联。首次处理耗时较长，并需要额外磁盘空间。\n\n现在开始吗？",
+            "初始化完整游戏资源", MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (answer != MessageBoxResult.Yes) return;
+        _exporting = true;
+        IsEnabled = false;
+        InitializeResourcesButton.IsEnabled = false;
+        UpdateProgressPanelPlacement();
+        ExportProgressPanel.Visibility = Visibility.Visible;
+        ExportProgressBar.IsIndeterminate = false;
+        ExportProgressBar.Value = 0;
+        ExportProgressBar.Opacity = 1;
+        ExportProgressPercentText.Text = "0%";
+        ExportProgressText.Text = "准备初始化";
+        ExportProgressDetailText.Text = $"正在分析 {packages.Count:N0} 个游戏资源包，请勿关闭工具";
+        try
+        {
+            var progress = new Progress<GameResourceInitializationProgress>(value =>
+            {
+                var percent = Math.Clamp(value.OverallPercent, 0, 100);
+                ExportProgressBar.Value = percent;
+                ExportProgressPercentText.Text = $"{percent:0.0}%";
+                ExportProgressText.Text = value.Stage;
+                var packageText = value.PackageDone > 0
+                    ? $"资源包 {value.PackageDone:N0}/{value.PackageTotal:N0}"
+                    : $"共 {value.PackageTotal:N0} 个资源包";
+                var recordText = value.RecordTotal > 1
+                    ? $" · 记录 {value.RecordDone:N0}/{value.RecordTotal:N0}"
+                    : "";
+                var sizeText = value.OutputBytes > 0
+                    ? $" · 已处理 {value.OutputBytes / 1024d / 1024d / 1024d:0.0} GB"
+                    : "";
+                ExportProgressDetailText.Text = $"{packageText}{recordText}{sizeText}\n{value.CurrentFile}";
+                StatusText.Text = $"{value.Stage} {percent:0.0}% · {packageText} · {value.CurrentFile}";
+            });
+            // The initializer reads every FData index and verifies completed manifests with
+            // SHA-256 before resuming. Keep that CPU/disk work off the WPF dispatcher so the
+            // progress panel continues painting and Windows never reports the tool as hung.
+            var initializationRoot = _root;
+            var result = await Task.Run(() =>
+                GameResourceInitializer.InitializeAsync(initializationRoot, progress));
+            ExportProgressBar.Value = 100;
+            ExportProgressPercentText.Text = "100%";
+            ExportProgressText.Text = "完整资源初始化完成，正在建立正式目录";
+            ExportProgressDetailText.Text = "正式名称、动作分类和镜头关联均已通过校验";
+            _nameCatalog = null;
+            _nameCatalogRoot = null;
+            _startupPreviewHandled = false;
+            await ScanAsync();
+            MessageBox.Show(this,
+                $"完整资源已就绪。\n\n资源：{result.ResourceCount:N0}\n" +
+                $"正式名称映射：{result.OfficialNameCount:N0}\n动作归属：{result.GameAnimationCount:N0}\n" +
+                $"镜头关联：{result.CameraCount:N0}\n动画解码：{result.DecodedAnimationCount:N0}\n" +
+                $"续跑跳过资源包：{result.ResumedPackageCount:N0}\n错误：{result.ErrorCount:N0}",
+                "初始化完成", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message + "\n\n已完成的文件会保留，下次点击可继续处理。",
+                "初始化失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText.Text = "初始化未完成，可再次点击继续";
+        }
+        finally
+        {
+            _exporting = false;
+            IsEnabled = true;
+            SetProgressIdle(StatusText.Text);
+            UpdateResourceInitializationState();
+        }
     }
 
     private async Task ApplyStartupPreviewAsync()
@@ -294,14 +395,26 @@ public partial class MainWindow : Window
             {
                 var key = $"{binding.OfficialName}\0{binding.ResourceKind}\0{binding.ResourceId}";
                 var (ordinal, total) = ordinalByOwnerAndKind[key];
+                var kind = EnglishResourceKind(binding.ResourceKind);
                 labels.Add(total > 1
-                    ? $"{binding.OfficialName} · {binding.ResourceKind} {ordinal:D3}"
-                    : $"{binding.OfficialName} · {binding.ResourceKind}");
+                    ? $"{binding.OfficialName}_{kind}_{ordinal:D3}"
+                    : $"{binding.OfficialName}_{kind}");
             }
             asset.OfficialName = string.Join(" + ", labels.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
             asset.OwnerName = bindings.Select(x => x.OfficialName).FirstOrDefault();
         }
     }
+
+    private static string EnglishResourceKind(string kind) => kind switch
+    {
+        "模型" => "Model",
+        "动画" => "Animation",
+        "骨骼" => "Skeleton",
+        "贴图" => "Texture",
+        "材质" => "Material",
+        "碰撞" => "Collision",
+        _ => "Resource"
+    };
 
     private void BuildQuickPreviewCatalog()
     {
@@ -798,10 +911,14 @@ public partial class MainWindow : Window
     private void BeginExportProgress()
     {
         _exporting = true;
+        UpdateProgressPanelPlacement();
         ExportProgressPanel.Visibility = Visibility.Visible;
         ExportProgressBar.IsIndeterminate = true;
         ExportProgressBar.Value = 0;
+        ExportProgressBar.Opacity = 1;
         ExportProgressText.Text = "正在准备导出…";
+        ExportProgressPercentText.Text = "0%";
+        ExportProgressDetailText.Text = "正在启动导出流程，请勿关闭工具";
         ExportModelFbxButton.IsEnabled = false;
         ExportAnimationFbxButton.IsEnabled = false;
         ExportCameraFbxButton.IsEnabled = false;
@@ -811,7 +928,12 @@ public partial class MainWindow : Window
     {
         ExportProgressText.Text = value.Stage;
         ExportProgressBar.IsIndeterminate = value.Percent is > 30 and < 100;
-        ExportProgressBar.Value = Math.Clamp(value.Percent, 0, 100);
+        var percent = Math.Clamp(value.Percent, 0, 100);
+        ExportProgressBar.Value = percent;
+        ExportProgressPercentText.Text = $"{percent}%";
+        ExportProgressDetailText.Text = percent < 100
+            ? "正在处理，请勿关闭工具"
+            : "文件已经写入导出目录";
     }
 
     private void EndExportProgress()
@@ -819,9 +941,33 @@ public partial class MainWindow : Window
         ExportProgressBar.IsIndeterminate = false;
         ExportProgressBar.Value = 100;
         ExportProgressText.Text = "导出完成";
+        ExportProgressPercentText.Text = "100%";
+        ExportProgressDetailText.Text = "文件已经写入导出目录";
         _exporting = false;
         UpdateExportButtons();
+        SetProgressIdle();
+    }
+
+    private void SetProgressIdle(string? detail = null)
+    {
+        ExportProgressBar.IsIndeterminate = false;
+        ExportProgressBar.Value = 0;
+        ExportProgressBar.Opacity = 0.32;
+        ExportProgressText.Text = "任务进度";
+        ExportProgressPercentText.Text = "";
+        ExportProgressDetailText.Text = string.IsNullOrWhiteSpace(detail)
+            ? "准备就绪 · 初始化和 FBX 导出进度会显示在这里"
+            : detail;
         ExportProgressPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateProgressPanelPlacement()
+    {
+        // Initialization starts before a model/animation timeline exists. Keep
+        // progress near the viewport bottom in that state; once the timeline is
+        // visible, place progress directly above it without resizing the view.
+        var bottom = PlaybackOverlay?.Visibility == Visibility.Visible ? 66d : 14d;
+        ExportProgressPanel.Margin = new Thickness(108, 0, 12, bottom);
     }
 
     private static string BuildRelationText(AssetEntry asset)
@@ -1936,7 +2082,14 @@ public partial class MainWindow : Window
     private async void OpenRoot_Click(object s, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = "选择 DWORIGINS 游戏目录或资源目录", InitialDirectory = Directory.Exists(_root) ? _root : null };
-        if (dialog.ShowDialog(this) == true) { _root = dialog.FolderName; UpdateGameRootDisplay(); RefreshBlenderStatus(); await ScanAsync(); }
+        if (dialog.ShowDialog(this) == true)
+        {
+            _root = dialog.FolderName;
+            UpdateGameRootDisplay();
+            RefreshBlenderStatus();
+            UpdateResourceInitializationState();
+            await ScanAsync();
+        }
     }
 
     private async void ExportFiltered_Click(object s, RoutedEventArgs e)
@@ -1991,7 +2144,8 @@ public partial class MainWindow : Window
                     Path.GetFileNameWithoutExtension(fileName), _root, includeGeometry: true, progress: modelProgress);
                 if (weaponModel is not null && weaponDestination is not null)
                     BlenderFbxExporter.Export(weaponModel, null, weaponDestination,
-                        weaponName, _root, includeGeometry: true, progress: weaponProgress);
+                        weaponName, _root, includeGeometry: true, progress: weaponProgress,
+                        weaponAttachmentOrientation: true);
             });
             StatusText.Text = weaponDestination is null
                 ? "角色模型 FBX 导出完成：" + destination

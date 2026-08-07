@@ -23,13 +23,16 @@ public sealed class AssetEntry
     public string HashId => ResourceId ?? Path.GetFileNameWithoutExtension(FullPath);
     public string? OfficialName { get; set; }
     public string DisplayName => string.IsNullOrWhiteSpace(OfficialName) ? Name
-        : Name.StartsWith(OfficialName, StringComparison.OrdinalIgnoreCase) ? Name
-        : $"{OfficialName}.{Extension.ToLowerInvariant()}";
+        : OfficialName!.EndsWith($".{Extension}", StringComparison.OrdinalIgnoreCase)
+            ? OfficialName
+            : $"{OfficialName}.{Extension.ToLowerInvariant()}";
     public string? NameAnnotation => OfficialNameAnnotations.Get(OwnerName ?? OfficialName);
     public string AnnotatedDisplayName => NameAnnotation is { Length: > 0 } note
         ? $"{DisplayName}（{note}）" : DisplayName;
     public string TreeDisplayName => DisplayName;
-    public string ExportFileName => SanitizeFileName(DisplayName);
+    // Disk/export names stay ASCII and retain the game's canonical object ID.
+    // Chinese character/weapon notes are UI metadata only.
+    public string ExportFileName => SanitizeFileName(EnglishFileName());
     public string SearchText => $"{OfficialName} {OwnerName} {NameAnnotation} {ResourceId} {GameActionCategory} {ClassificationEvidence} {ActionCameraResourceId} {ActionCameraEvidence} {(IsActionCamera ? "动作镜头 相机 camera" : "")} {string.Join(' ', GameActionOwners ?? [])} {string.Join(' ', (GameActionOwners ?? []).Select(OfficialNameAnnotations.Format))} {Name} {RelativePath} {Kind} {Domain}";
     public string Domain
     {
@@ -57,6 +60,34 @@ public sealed class AssetEntry
 
     private static string SanitizeFileName(string value) =>
         string.Concat(value.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+
+    private string EnglishFileName()
+    {
+        var stem = string.IsNullOrWhiteSpace(OfficialName)
+            ? (OwnerName is { Length: > 0 } owner ? $"{owner}_{KindToken()}_{HashId}" : HashId)
+            : OfficialName!;
+        stem = stem
+            .Replace("模型", "Model", StringComparison.Ordinal)
+            .Replace("动画", "Animation", StringComparison.Ordinal)
+            .Replace("骨骼", "Skeleton", StringComparison.Ordinal)
+            .Replace("贴图", "Texture", StringComparison.Ordinal)
+            .Replace("材质", "Material", StringComparison.Ordinal)
+            .Replace("碰撞", "Collision", StringComparison.Ordinal)
+            .Replace(" · ", "_", StringComparison.Ordinal)
+            .Replace(' ', '_');
+        stem = string.Concat(stem.Select(c => c <= 127 && (char.IsLetterOrDigit(c) || c is '_' or '-') ? c : '_'));
+        while (stem.Contains("__", StringComparison.Ordinal)) stem = stem.Replace("__", "_", StringComparison.Ordinal);
+        stem = stem.Trim('_');
+        if (stem.Length == 0) stem = $"resource_{HashId}";
+        return stem + Path.GetExtension(FullPath).ToLowerInvariant();
+    }
+
+    private string KindToken() => Kind switch
+    {
+        AssetKind.Model => "Model", AssetKind.Animation => "Animation", AssetKind.Skeleton => "Skeleton",
+        AssetKind.Texture => "Texture", AssetKind.Material => "Material", AssetKind.Collision => "Collision",
+        AssetKind.Package => "Package", AssetKind.Movie => "Movie", _ => "Resource"
+    };
 
     public void RestoreOfficialNameFromOrganizedPath()
     {

@@ -4,16 +4,29 @@
 
 项目定位是研究、预览和导出。它不包含游戏本体、解包资源或导出资源，也不提供游戏资源传播服务。
 
-## [⬇ 下载 v1.0.1（Windows x64）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool-v1.0.1-win-x64.zip)
+## [⬇ 下载最新版（Windows x64 单 EXE）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool.exe)
 
 ## 安装
 
-1. 下载并解压 ZIP；压缩包内只有 `DWOriginsAssetTool.exe`。
+1. 下载 `DWOriginsAssetTool.exe`。
 2. 将 EXE 放到可写目录运行。程序会在同级自动建立导出文件夹。
-3. 首次启动后点击高亮的“选择游戏目录”，选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录。
+3. 首次启动必须依次完成左侧两步引导：先点击高亮的“选择游戏目录”，选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录；再点击“立即初始化完整游戏资源（必选）”。
 4. 模型、动画和镜头 FBX 导出需要安装 [Blender](https://store.steampowered.com/app/365670/Blender/)；工具会自动检测 Steam 版，也可以手动选择 `blender.exe`。
 
-当前版本：`v1.0.1`
+当前版本：`v1.0.3`
+
+## v1.0.3 更新
+
+- 修正 FBX 厘米单位转换，UE 导入后角色与武器根骨保持 Rotation `0`、Scale `1`。
+- 独立武器 FBX 已烘焙装备握持方向；附加到人物 `bone_0104` 后使用相对 Rotation `0`、Scale `1`。
+- 初始化与 FBX 导出进度移动到中央时间轴上方，任务结束后自动隐藏且不改变视口布局。
+- 更新内置使用说明与 UE 导入步骤；兼容 Blender 4.x 和 Blender 5.x 动画曲线接口。
+
+## v1.0.2 测试版更新
+
+- 增加从游戏 FData 包自动初始化完整基础资源树；多语言重复资源固定采用中文优先策略。
+- 初始化支持按资源包断点续跑，Manifest 使用包相对路径生成唯一文件名，并校验已完成输出是否仍然存在。
+- 只有解包零错误、正式名称/动作/镜头目录有效且 6,856 个基础动画全部解码通过后才写入完成标记。
 
 ## v1.0.1 更新
 
@@ -35,7 +48,7 @@
 ## 使用方法
 
 1. 启动工具并阅读首次显示的使用说明。
-2. 选择游戏目录并等待资源扫描完成。
+2. 按左侧两步引导选择游戏目录并初始化完整游戏资源，等待校验和扫描完成。
 3. 从左侧目录树选择资源，或在右侧“效果预览器”自由组合角色、武器和动画。
 4. 在“镜头预览”中选择固定镜头动作；工具会自动加载对应角色、默认武器、动画和镜头并立即播放。
 5. 使用右侧导出区域分别导出角色模型、武器模型、角色动画或镜头 FBX。
@@ -53,9 +66,11 @@
 ### Unreal Engine
 
 1. 导入角色模型 FBX，创建 Skeletal Mesh 与 Skeleton。
-2. 单独导入武器模型 FBX，并按需要附加到人物装备插槽。
+2. 单独导入武器模型 FBX，将武器 Skeletal Mesh Component 附加到人物 `bone_0104`；新版已烘焙握持朝向，相对 Rotation 使用 `0`、Scale 使用 `1`。
 3. 导入角色动画 FBX 时关闭 `Import Mesh`，并选择角色模型已经创建的 Skeleton。
 4. 在 Sequencer 中选择 Cine Camera Actor，再导入镜头 FBX。
+
+测试新版导出时应删除 UE 中旧模型与旧 Skeleton 后重新导入，避免复用旧的单位或骨骼轴向数据。初始化资源时任务进度显示在中央视口下方；加载时间轴后，导出进度显示在时间轴上方，完成后自动隐藏。
 
 ### 3ds Max
 

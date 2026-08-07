@@ -26,7 +26,7 @@
         <Border Background="#252416" BorderBrush="#705627" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,14">
           <StackPanel>
             <TextBlock Text="首次使用" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="点击左侧“游戏资源”区域中高亮的“选择游戏目录”，选择包含 DWORIGINS.exe 和 File 文件夹的游戏根目录。游戏目录已有展开资源时，通常不需要再次解包。"
+            <TextBlock Text="首次使用必须完成两步：① 点击左侧高亮的“选择游戏目录”，选择包含 DWORIGINS.exe 和 File 文件夹的游戏根目录；② 点击黄色提示区中的“立即初始化完整游戏资源（必选）”。初始化完成后，工具才能恢复正式名称、角色/武器/动画分类和镜头关联。"
                        Foreground="#D5DCE6" TextWrapping="Wrap" LineHeight="21" Margin="0,7,0,0"/>
           </StackPanel>
         </Border>
@@ -44,6 +44,18 @@
             <TextBlock Text="使用底部时间轴播放或拖动定位。自由镜头下可显示动画摄像机、镜头轨迹和实时镜头数据。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
             <TextBlock Text="5   FBX 导出" FontWeight="SemiBold"/>
             <TextBlock Text="右下角可分别导出模型、角色动画和镜头动画。文件会自动保存到工具 EXE 旁的 DWOrigins_Exports 文件夹。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,0"/>
+            <TextBlock Text="6   任务进度" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <TextBlock Text="初始化资源时进度条显示在中央视口下方；加载动画时间轴后，导出进度会自动显示在时间轴正上方。任务完成或失败后会自动隐藏，不会挤压视口。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="Unreal Engine 导入" Style="{StaticResource SectionTitleStyle}" Margin="2,0,0,9"/>
+        <Border Style="{StaticResource CardStyle}" Background="#111821" Padding="14" Margin="0,0,0,14">
+          <StackPanel>
+            <TextBlock Text="1   分别导入角色与武器模型 FBX；角色模型用于创建 Skeleton。" TextWrapping="Wrap" LineHeight="20"/>
+            <TextBlock Text="2   导入角色动画 FBX 时关闭 Import Mesh，并选择角色模型创建的 Skeleton。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="0,5,0,0"/>
+            <TextBlock Text="3   将武器 Skeletal Mesh Component 附加到人物 bone_0104。新版武器已经烘焙握持朝向，相对 Rotation 使用 0、Scale 使用 1。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="0,5,0,0"/>
+            <TextBlock Text="4   测试新版导出时请删除 UE 中旧模型和旧 Skeleton 后重新导入，避免旧导入数据被继续复用。" Foreground="#E6B95C" TextWrapping="Wrap" LineHeight="20" Margin="0,5,0,0"/>
           </StackPanel>
         </Border>
 

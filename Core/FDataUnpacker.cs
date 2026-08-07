@@ -61,15 +61,26 @@ public static class FDataUnpacker
         CancellationToken token = default,
         IReadOnlyDictionary<uint, ResourceOutputName>? outputNames = null,
         IReadOnlyDictionary<uint, string>? knownRelativePaths = null,
-        string? manifestDirectory = null)
+        string? manifestDirectory = null,
+        IReadOnlyDictionary<string, string>? contentNames = null,
+        Func<FDataRecord, bool>? shouldReadRecord = null,
+        Func<FDataRecord, string?, bool>? includeRecord = null,
+        string? manifestFileName = null,
+        int manifestPolicyVersion = 1)
     {
         var records = ReadIndex(path);
+        var selectedRecordCount = 0;
         Directory.CreateDirectory(destination);
         var files = new List<FDataExtracted>(); var errors = new List<string>(); long totalBytes = 0;
         await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, true);
         for (var index = 0; index < records.Count; index++)
         {
             token.ThrowIfCancellationRequested(); var record = records[index];
+            if (shouldReadRecord is not null && !shouldReadRecord(record))
+            {
+                progress?.Report((index + 1, records.Count, $"跳过非首选语言资源 {record.ResourceId:x8}"));
+                continue;
+            }
             try
             {
                 if (record.RecordSize > int.MaxValue) throw new InvalidDataException("单条 IDRK 记录超过 2 GB，当前版本拒绝整块载入");
@@ -78,9 +89,18 @@ public static class FDataUnpacker
                 var content = DecompressRecord(bytes, record.UncompressedSize);
                 var extension = DetectExtension(content, knownExtensions?.GetValueOrDefault(record.ResourceId));
                 var outputName = outputNames?.GetValueOrDefault(record.ResourceId);
-                var knownPath = knownRelativePaths?.GetValueOrDefault(record.ResourceId);
+                var contentHash = contentNames is null ? null :
+                    Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+                if (includeRecord is not null && !includeRecord(record, contentHash))
+                {
+                    progress?.Report((index + 1, records.Count, $"跳过重复资源 {record.ResourceId:x8}"));
+                    continue;
+                }
+                selectedRecordCount++;
+                var knownPath = contentHash is not null && contentNames!.TryGetValue(contentHash, out var criticalPath)
+                    ? criticalPath : knownRelativePaths?.GetValueOrDefault(record.ResourceId);
                 var relativeDirectory = outputName?.RelativeDirectory ?? (knownPath is not null
-                    ? Path.Combine("game_tree", Path.GetDirectoryName(knownPath) ?? "Root")
+                    ? Path.GetDirectoryName(knownPath) ?? "Root"
                     : Path.Combine("_unresolved", CategoryFor(extension), extension.TrimStart('.')));
                 var directory = Path.Combine(destination, relativeDirectory);
                 Directory.CreateDirectory(directory);
@@ -88,8 +108,17 @@ public static class FDataUnpacker
                     : knownPath is not null ? Path.GetFileName(knownPath)
                     : $"{record.ResourceId:x8}{extension}";
                 var target = Path.Combine(directory, fileName);
-                await File.WriteAllBytesAsync(target, content, token);
-                var sha = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+                var sha = contentHash ?? Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+                var targetMatches = false;
+                if (File.Exists(target) && new FileInfo(target).Length == content.LongLength)
+                {
+                    await using var existing = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    targetMatches = Convert.ToHexString(await SHA256.HashDataAsync(existing, token))
+                        .Equals(sha, StringComparison.OrdinalIgnoreCase);
+                }
+                if (!targetMatches)
+                    await File.WriteAllBytesAsync(target, content, token);
                 files.Add(new(record.ResourceId, extension, content.LongLength, target, sha, record.Offset));
                 totalBytes += content.LongLength;
                 progress?.Report((index + 1, records.Count, Path.GetFileName(target)));
@@ -103,16 +132,23 @@ public static class FDataUnpacker
 
         manifestDirectory ??= destination;
         Directory.CreateDirectory(manifestDirectory);
-        var manifestPath = Path.Combine(manifestDirectory, Path.GetFileNameWithoutExtension(path) + ".manifest.json");
+        manifestFileName ??= Path.GetFileNameWithoutExtension(path) + ".manifest.json";
+        var manifestPath = Path.Combine(manifestDirectory, manifestFileName);
+        var sourceInfo = new FileInfo(path);
         var manifest = new
         {
             Source = Path.GetFullPath(path),
+            SourceLength = sourceInfo.Length,
+            SourceLastWriteTimeUtc = sourceInfo.LastWriteTimeUtc,
+            PolicyVersion = manifestPolicyVersion,
             Format = "PDRK/IDRK0000",
             Records = records.Count,
+            SelectedRecords = selectedRecordCount,
             Extracted = files.Count,
             OutputBytes = totalBytes,
             Files = files.Select(x => new { Id = $"0x{x.ResourceId:x8}", x.Extension, x.Size, RelativePath = Path.GetRelativePath(destination, x.Path), x.Sha256, SourceOffset = $"0x{x.SourceOffset:X}" }),
-            Errors = errors
+            Errors = errors,
+            Complete = errors.Count == 0 && files.Count == selectedRecordCount
         };
         await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }), token);
         return new(records.Count, files.Count, totalBytes, files, errors);

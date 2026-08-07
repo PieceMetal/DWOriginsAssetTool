@@ -11,7 +11,7 @@ public static class BlenderFbxExporter
     public static void Export(G1MInfo model, G1AClip? clip, string destination, string name, string gameRoot, bool includeGeometry = true,
         ActionCameraClip? camera = null, IProgress<(string Stage, int Percent)>? progress = null,
         bool cameraForUnrealSequencer = false, double cameraAspectRatio = 1.5,
-        GltfExporter.AccessoryExport? accessory = null)
+        GltfExporter.AccessoryExport? accessory = null, bool weaponAttachmentOrientation = false)
     {
         progress?.Report(("正在查找 Blender", 2));
         var blender = FindBlender(gameRoot) ?? throw new InvalidOperationException(
@@ -72,6 +72,7 @@ public static class BlenderFbxExporter
             start.ArgumentList.Add("--background"); start.ArgumentList.Add("--factory-startup"); start.ArgumentList.Add("--python"); start.ArgumentList.Add(script);
             start.ArgumentList.Add("--"); start.ArgumentList.Add(gltf); start.ArgumentList.Add(destination);
             if (cameraFovPath is not null) start.ArgumentList.Add(cameraFovPath);
+            else if (weaponAttachmentOrientation) start.ArgumentList.Add("--weapon-attachment");
             using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动 Blender");
             progress?.Report(("Blender 正在写入 FBX", 35));
             var stdout = process.StandardOutput.ReadToEnd();

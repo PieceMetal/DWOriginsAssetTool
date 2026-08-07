@@ -5,7 +5,11 @@
         Title="真三国无双：起源 · 资源工作台" Icon="Assets/app-icon.ico" Width="1560" Height="940" MinWidth="1200" MinHeight="740"
         WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBrush}">
   <Grid>
-    <Grid.RowDefinitions><RowDefinition Height="66"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="66"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="30"/>
+    </Grid.RowDefinitions>
 
     <!-- 顶部应用栏 -->
     <Border Grid.Row="0" Background="#101620" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,0">
@@ -52,11 +56,30 @@
                 <TextBlock x:Name="GameRootText" Grid.Column="1" Text="尚未选择游戏目录" Foreground="{StaticResource MutedBrush}" FontSize="10"
                            TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0,0,0"/>
               </Grid>
+              <TextBlock x:Name="FirstUseStepsText" Text="首次使用必须完成以下两步" Foreground="#E7B64B" FontSize="11" FontWeight="SemiBold" Margin="1,0,0,8"/>
+              <TextBlock Text="第 1 步 · 选择游戏目录" Foreground="#CBD5E1" FontSize="10" FontWeight="SemiBold" Margin="1,0,0,5"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/></Grid.ColumnDefinitions>
-                <Button Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="0,0,5,0" Padding="12,8"/>
+                <Button x:Name="SelectGameRootButton" Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="0,0,5,0" Padding="12,8"/>
                 <Button Grid.Column="1" Content="重新扫描" Click="Rescan_Click" Style="{StaticResource GhostButtonStyle}" Margin="5,0,0,0" Padding="10,8"/>
               </Grid>
+              <Border x:Name="InitializationRequiredPanel" Background="#2A2416" BorderBrush="#A77A27" BorderThickness="1"
+                      CornerRadius="7" Padding="9" Margin="0,10,0,0">
+                <StackPanel>
+                  <Grid Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="第 2 步 · 初始化游戏资源" Foreground="#F1C45B" FontSize="11" FontWeight="Bold"/>
+                    <Border Grid.Column="1" Background="#5B3F12" BorderBrush="#D49A2D" BorderThickness="1" CornerRadius="8" Padding="7,1">
+                      <TextBlock Text="必须完成" Foreground="#FFE2A0" FontSize="9" FontWeight="Bold"/>
+                    </Border>
+                  </Grid>
+                  <TextBlock x:Name="InitializationRequiredText" Text="请先选择游戏目录，然后恢复正式名称、分类和镜头关联。"
+                             Foreground="#C9B98E" FontSize="10" TextWrapping="Wrap" LineHeight="16" Margin="0,0,0,7"/>
+                  <Button x:Name="InitializeResourcesButton" Content="先完成第 1 步" Click="InitializeResources_Click"
+                          Style="{StaticResource AccentButtonStyle}" Padding="12,9" IsEnabled="False"
+                          ToolTip="首次使用必须从游戏本体恢复正式目录、名称、角色/武器/动画分类和镜头关联。"/>
+                </StackPanel>
+              </Border>
             </StackPanel>
           </Border>
 
@@ -176,6 +199,26 @@
                 <TextBlock x:Name="WorldAxisYLabel" Text="Y" Foreground="#63E77A" FontWeight="Bold"/>
                 <TextBlock x:Name="WorldAxisZLabel" Text="Z" Foreground="#6BA8EE" FontWeight="Bold"/>
               </Canvas>
+            </Border>
+            <!-- Task progress sits directly above the animation timeline. It is
+                 an overlay, so showing it never resizes the viewport. -->
+            <Border x:Name="ExportProgressPanel" Panel.ZIndex="60"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                    Margin="108,0,12,14" Visibility="Collapsed"
+                    Background="#F2151F2B" BorderBrush="#6E8EAE" BorderThickness="1"
+                    CornerRadius="6" Padding="10,7">
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Ellipse x:Name="ExportProgressDot" Width="8" Height="8" Fill="#58C68B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                  <TextBlock x:Name="ExportProgressText" Grid.Column="1" Text="任务进度" Foreground="#F2F5F9" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                  <TextBlock x:Name="ExportProgressDetailText" Grid.Column="1" Text="" Foreground="#8FA0B4" FontSize="10" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right" Margin="12,0,0,0"/>
+                  <TextBlock x:Name="ExportProgressPercentText" Grid.Column="2" Text="" Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="Bold" Margin="12,0,0,0"/>
+                </Grid>
+                <ProgressBar x:Name="ExportProgressBar" Grid.Row="1" Height="10" Minimum="0" Maximum="100" Value="0"
+                             IsHitTestVisible="False" Margin="0,6,0,0" Opacity="0.32"/>
+              </Grid>
             </Border>
             <Border x:Name="PlaybackOverlay" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="108,0,12,12" Padding="8,7" Background="#E018202B" BorderBrush="#536174" BorderThickness="1" CornerRadius="5" Visibility="Collapsed">
               <Grid>
@@ -378,12 +421,6 @@
                     <Button x:Name="BlenderSteamButton" Grid.Column="1" Content="Steam 安装" Click="OpenBlenderSteam_Click" Margin="3,0" Padding="5,6" FontSize="10"/>
                     <Button Grid.Column="2" Content="官网下载" Click="OpenBlenderWebsite_Click" Margin="3,0,0,0" Padding="5,6" FontSize="10"/>
                   </Grid>
-                </StackPanel>
-              </Border>
-              <Border x:Name="ExportProgressPanel" Visibility="Collapsed" Background="#182332" BorderBrush="#33465D" BorderThickness="1" CornerRadius="7" Padding="9" Margin="0,0,0,8">
-                <StackPanel>
-                  <TextBlock x:Name="ExportProgressText" Text="准备导出" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,5"/>
-                  <ProgressBar x:Name="ExportProgressBar" Height="7" Minimum="0" Maximum="100" Value="0" IsHitTestVisible="False"/>
                 </StackPanel>
               </Border>
               <Button x:Name="ExportModelFbxButton" Content="导出当前模型 FBX" Click="ExportModelFbx_Click" HorizontalAlignment="Stretch" IsEnabled="False" Margin="0,0,0,7"/>

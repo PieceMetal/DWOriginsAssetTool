@@ -116,9 +116,19 @@ public static class GltfExporter
                 attributes["NORMAL"] = AddAccessor(ToBytes(FitFloatAttribute(normals, vertices, 3, new[] { 0f, 1f, 0f })), Float, vertices, "VEC3", 34962);
             if (part.TextureCoordinates is { Length: > 0 } uv)
                 attributes["TEXCOORD_0"] = AddAccessor(ToBytes(FitFloatAttribute(uv, vertices, 2, new[] { 0f, 0f })), Float, vertices, "VEC2", 34962);
-            if (model.Bones.Count > 0 && part.BoneIndices is not null && part.BoneWeights is not null)
+            if (model.Bones.Count > 0)
             {
-                var (joints, weights) = BuildJointWeights(part, vertices, model.Bones.Count);
+                // Some weapon G1M meshes are rigid objects: they ship with a
+                // skeleton but no per-vertex blend stream.  Exporting such a
+                // mesh as an unskinned child of the armature looks correct in
+                // Blender, but Unreal's skeletal FBX importer drops the mesh
+                // and produces an apparently empty weapon asset.  Bind every
+                // rigid vertex to the model root with weight 1.0.  The weapon
+                // remains an independent model; this only makes its own FBX
+                // skeleton/mesh relationship explicit for UE and 3ds Max.
+                var (joints, weights) = part.BoneIndices is not null && part.BoneWeights is not null
+                    ? BuildJointWeights(part, vertices, model.Bones.Count)
+                    : BuildRigidJointWeights(vertices, RootBoneLocalId(model.Bones));
                 attributes["JOINTS_0"] = AddAccessor(ToBytes(joints), UnsignedShort, vertices, "VEC4", 34962);
                 attributes["WEIGHTS_0"] = AddAccessor(ToBytes(weights), Float, vertices, "VEC4", 34962);
             }
@@ -132,7 +142,7 @@ public static class GltfExporter
             };
             meshes.Add(new Dictionary<string, object?> { ["name"] = $"mesh_{partIndex:D3}", ["primitives"] = new[] { primitive } });
             var meshNode = new Dictionary<string, object?> { ["name"] = $"mesh_{partIndex:D3}", ["mesh"] = meshes.Count - 1 };
-            if (skins.Count > 0 && part.BoneIndices is not null && part.BoneWeights is not null) meshNode["skin"] = 0;
+            if (skins.Count > 0) meshNode["skin"] = 0;
             nodes.Add(meshNode); rootChildren.Add(nodes.Count - 1);
         }
 
@@ -339,6 +349,25 @@ public static class GltfExporter
             for (var k = 0; k < selected.Length; k++) { joints[vertex * 4 + k] = (ushort)selected[k].Bone; weights[vertex * 4 + k] = selected[k].Weight / total; }
         }
         return (joints, weights);
+    }
+
+    private static (ushort[] Joints, float[] Weights) BuildRigidJointWeights(int vertices, int rootLocalId)
+    {
+        var joints = new ushort[vertices * 4];
+        var weights = new float[vertices * 4];
+        var joint = (ushort)Math.Clamp(rootLocalId, 0, ushort.MaxValue);
+        for (var vertex = 0; vertex < vertices; vertex++)
+        {
+            joints[vertex * 4] = joint;
+            weights[vertex * 4] = 1f;
+        }
+        return (joints, weights);
+    }
+
+    private static int RootBoneLocalId(IReadOnlyList<SkeletonBone> bones)
+    {
+        var root = bones.FirstOrDefault(bone => bone.ParentLocalId < 0);
+        return root?.LocalId is >= 0 and < ushort.MaxValue ? root.LocalId : 0;
     }
 
     private static (Vector3 Scale, Quaternion Rotation, Vector3 Translation) SampleLocal(G1MInfo model, G1AClip clip, int localId, float time)
