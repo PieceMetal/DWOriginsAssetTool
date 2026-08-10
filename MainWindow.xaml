@@ -130,32 +130,58 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Border Style="{StaticResource CardStyle}" Background="#131A24" Padding="9" Margin="0,0,0,8">
           <StackPanel>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="112"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="124"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="112"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="124"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBlock Text="视图" VerticalAlignment="Center" Margin="2,0,6,0"/>
               <ComboBox x:Name="ViewCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewportView_Changed">
                 <ComboBoxItem Content="透视"/><ComboBoxItem Content="前"/><ComboBoxItem Content="后"/><ComboBoxItem Content="左"/><ComboBoxItem Content="右"/><ComboBoxItem Content="顶"/><ComboBoxItem Content="底"/>
               </ComboBox>
-              <Button Grid.Column="2" Content="全部取景 (F)" Click="ResetView_Click" Padding="10,7"/>
-              <TextBlock Grid.Column="3" Text="显示" VerticalAlignment="Center" Margin="12,0,6,0"/>
-              <ComboBox x:Name="RenderModeCombo" Grid.Column="4" SelectedIndex="1" SelectionChanged="RenderMode_Changed">
+              <TextBlock Grid.Column="2" Text="显示" VerticalAlignment="Center" Margin="12,0,6,0"/>
+              <ComboBox x:Name="RenderModeCombo" Grid.Column="3" SelectedIndex="1" SelectionChanged="RenderMode_Changed">
                 <ComboBoxItem Content="材质"/><ComboBoxItem Content="实体"/><ComboBoxItem Content="线框"/>
               </ComboBox>
+              <Border Grid.Column="5" Background="#101D29" BorderBrush="#36536A" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="镜头工具" Foreground="#83CFF4" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                  <Button x:Name="CameraCurveButton" Content="镜头曲线" Click="CameraCurve_Click" IsEnabled="False" Padding="11,5" Margin="0" ToolTip="打开镜头参数曲线、原始 K 帧和动作事件标记"/>
+                  <CheckBox x:Name="CameraDataCheck" Content="镜头数据" Click="CameraData_Changed" IsEnabled="False" Margin="10,0,1,0" VerticalAlignment="Center" ToolTip="打开实时镜头数据浮窗"/>
+                </StackPanel>
+              </Border>
               <Border Grid.Column="6" Background="#112332" BorderBrush="#24465D" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,2,0" VerticalAlignment="Center"><TextBlock x:Name="ViewportStats" Text="G1M VIEWPORT" Foreground="#83CFF4" FontSize="10" FontWeight="SemiBold"/></Border>
             </Grid>
-            <StackPanel Orientation="Horizontal" Margin="2,7,0,0">
+            <WrapPanel Orientation="Horizontal" Margin="2,7,0,0">
+              <CheckBox x:Name="DualViewportCheck" Content="双视口" Click="DualViewport_Changed" Margin="0,0,18,0" FontWeight="SemiBold" Foreground="#83CFF4" ToolTip="按需开启左右双视口；两边独立选择镜头模式并同步同一帧"/>
               <CheckBox x:Name="GridCheck" Content="网格 (G)" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
               <CheckBox x:Name="AxesCheck" Content="坐标轴" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
-              <CheckBox x:Name="SkeletonCheck" Content="显示骨骼 (B)" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
               <CheckBox x:Name="CameraGizmoCheck" Content="显示动画摄像机" Click="CameraGizmo_Changed" IsEnabled="False" ToolTip="自由镜头下显示动画摄像机的位置、朝向和视锥"/>
               <CheckBox x:Name="CameraTrajectoryCheck" Content="镜头轨迹" Click="CameraTrajectory_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="自由镜头下显示整段摄像机运动路径；绿色为起点，红色为终点，黄色为当前帧"/>
-              <CheckBox x:Name="CameraDataCheck" Content="镜头数据" Click="CameraData_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="在视口实时显示当前动作镜头的机位、目标、FOV、景别距离和速度"/>
               <CheckBox x:Name="WeaponCheck" Content="显示武器" Click="WeaponCheck_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="显示或隐藏快速预览加载的武器"/>
-              <TextBlock x:Name="PreviewSummary" Text="尚未加载资源" Foreground="{StaticResource MutedBrush}" Margin="18,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
+              <TextBlock x:Name="PreviewSummary" Visibility="Collapsed"/>
+            </WrapPanel>
           </StackPanel>
         </Border>
         <Border Grid.Row="1" Style="{StaticResource CardStyle}" Background="#080D13" BorderBrush="#303D4D" ClipToBounds="True">
           <Grid ClipToBounds="True">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition x:Name="PrimaryViewportColumn" Width="*"/>
+              <ColumnDefinition x:Name="ViewportSplitterColumn" Width="0"/>
+              <ColumnDefinition x:Name="ComparisonViewportColumn" Width="0"/>
+            </Grid.ColumnDefinitions>
+            <!-- Reliable viewport sky layer. WPF may cull very large inside-facing
+                 meshes on some GPUs, so the atmosphere itself is rendered behind
+                 the transparent Viewport3D, while ground and helpers stay in 3D. -->
+            <Border Grid.Column="0" IsHitTestVisible="False">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                  <GradientStop Color="#484A4B" Offset="0"/>
+                  <GradientStop Color="#5D6060" Offset="0.35"/>
+                  <GradientStop Color="#898A86" Offset="0.53"/>
+                  <GradientStop Color="#7B7C77" Offset="0.59"/>
+                  <GradientStop Color="#565854" Offset="0.67"/>
+                  <GradientStop Color="#343638" Offset="0.79"/>
+                  <GradientStop Color="#1D1F21" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
             <Viewport3D x:Name="Viewport" ClipToBounds="True" SizeChanged="Viewport_SizeChanged">
               <Viewport3D.Camera>
                 <PerspectiveCamera x:Name="ViewportCamera" FieldOfView="42"/>
@@ -167,6 +193,54 @@
             <Border x:Name="ViewportInput" Background="#01000000" Focusable="True" Cursor="Arrow"
                     MouseWheel="Viewport_MouseWheel" MouseMove="Viewport_MouseMove"
                     MouseDown="Viewport_MouseDown" MouseUp="Viewport_MouseUp" KeyDown="ViewportInput_KeyDown"/>
+            <Border x:Name="PrimaryModePanel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14"
+                    Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="8" Padding="8,5">
+              <ComboBox x:Name="CameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed">
+                <ComboBoxItem Content="自由镜头"/>
+                <ComboBoxItem x:Name="LinkedCameraModeItem" Content="动画镜头" Visibility="Collapsed" IsEnabled="False"/>
+                <ComboBoxItem x:Name="ConfiguredCameraModeItem" Content="配置镜头" Visibility="Collapsed" IsEnabled="False"/>
+                <ComboBoxItem x:Name="CompositeCameraModeItem" Content="最终合成" Visibility="Collapsed" IsEnabled="False"/>
+              </ComboBox>
+            </Border>
+            <GridSplitter x:Name="ComparisonViewportSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
+                          Background="#344359" Visibility="Collapsed"/>
+            <Grid Grid.Column="2" ClipToBounds="True" Background="Transparent">
+              <Border IsHitTestVisible="False">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop Color="#484A4B" Offset="0"/>
+                    <GradientStop Color="#5D6060" Offset="0.35"/>
+                    <GradientStop Color="#898A86" Offset="0.53"/>
+                    <GradientStop Color="#7B7C77" Offset="0.59"/>
+                    <GradientStop Color="#565854" Offset="0.67"/>
+                    <GradientStop Color="#343638" Offset="0.79"/>
+                    <GradientStop Color="#1D1F21" Offset="1"/>
+                  </LinearGradientBrush>
+                </Border.Background>
+              </Border>
+              <Viewport3D x:Name="ComparisonViewport" ClipToBounds="True" SizeChanged="Viewport_SizeChanged" Visibility="Collapsed">
+                <Viewport3D.Camera><PerspectiveCamera x:Name="ComparisonCamera" FieldOfView="42"/></Viewport3D.Camera>
+              </Viewport3D>
+              <local:WireframeOverlay x:Name="ComparisonWireframeLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
+              <Border x:Name="ComparisonViewportInput" Background="#01000000" Focusable="True" Cursor="Arrow"
+                      Visibility="Collapsed" MouseWheel="Viewport_MouseWheel" MouseMove="Viewport_MouseMove"
+                      MouseDown="Viewport_MouseDown" MouseUp="Viewport_MouseUp" KeyDown="ViewportInput_KeyDown"/>
+              <Border x:Name="ComparisonHintPanel" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14"
+                      Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="12" Padding="11,6"
+                      IsHitTestVisible="False" Visibility="Collapsed" Width="0" Height="0">
+                <TextBlock x:Name="ComparisonViewportHint" Text="右视口 · 自由镜头" Foreground="#BAC4D2" FontSize="11"/>
+              </Border>
+              <Border x:Name="ComparisonModePanel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14"
+                      Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="8" Padding="8,5"
+                      Visibility="Collapsed">
+                <ComboBox x:Name="ComparisonCameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed">
+                  <ComboBoxItem Content="自由镜头"/>
+                  <ComboBoxItem x:Name="ComparisonActionCameraModeItem" Content="动画镜头" Visibility="Collapsed" IsEnabled="False"/>
+                  <ComboBoxItem x:Name="ComparisonConfiguredCameraModeItem" Content="配置镜头" Visibility="Collapsed" IsEnabled="False"/>
+                  <ComboBoxItem x:Name="ComparisonCompositeCameraModeItem" Content="最终合成" Visibility="Collapsed" IsEnabled="False"/>
+                </ComboBox>
+              </Border>
+            </Grid>
             <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
               <Border Width="64" Height="64" CornerRadius="16" Background="#171F2B" HorizontalAlignment="Center">
                 <Grid><Path Data="M4,7 L12,3 L20,7 L12,11 Z M4,7 L4,17 L12,21 L12,11 M20,7 L20,17 L12,21" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.5" Width="30" Height="30" Stretch="Uniform"/></Grid>
@@ -175,7 +249,7 @@
               <TextBlock Text="支持 G1M 网格、骨架和 G1A / G2A 动画预览" HorizontalAlignment="Center" Margin="0,7" Foreground="{StaticResource MutedBrush}"/>
             </StackPanel>
 
-            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="12" Padding="11,6" IsHitTestVisible="False">
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14" Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="12" Padding="11,6" IsHitTestVisible="False" Visibility="Collapsed">
               <StackPanel Orientation="Horizontal"><Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}" Margin="0,0,7,0"/><TextBlock x:Name="ViewportHint" Text="左键旋转 · 右键平移 · 中键平移 · Alt+中键旋转 · 滚轮缩放" Foreground="#BAC4D2" FontSize="11"/></StackPanel>
             </Border>
             <Border x:Name="CameraDataHud" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14" Width="292"
@@ -203,6 +277,7 @@
             <!-- Task progress sits directly above the animation timeline. It is
                  an overlay, so showing it never resizes the viewport. -->
             <Border x:Name="ExportProgressPanel" Panel.ZIndex="60"
+                    Grid.ColumnSpan="3"
                     HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
                     Margin="108,0,12,14" Visibility="Collapsed"
                     Background="#F2151F2B" BorderBrush="#6E8EAE" BorderThickness="1"
@@ -220,16 +295,18 @@
                              IsHitTestVisible="False" Margin="0,6,0,0" Opacity="0.32"/>
               </Grid>
             </Border>
-            <Border x:Name="PlaybackOverlay" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="108,0,12,12" Padding="8,7" Background="#E018202B" BorderBrush="#536174" BorderThickness="1" CornerRadius="5" Visibility="Collapsed">
+            <Border x:Name="PlaybackOverlay" Grid.ColumnSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="108,0,12,12" Padding="8,7" Background="#E018202B" BorderBrush="#536174" BorderThickness="1" CornerRadius="5" Visibility="Collapsed">
               <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <Button x:Name="PlayButton" Content="▶" Click="PlayAnimation_Click" IsEnabled="False" Width="36" Height="30" Padding="0" Margin="0,0,8,0"/>
-                <ComboBox x:Name="CameraModeCombo" Grid.Column="1" Width="142" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed" Margin="0,0,8,0">
-                  <ComboBoxItem Content="自由镜头"/><ComboBoxItem x:Name="LinkedCameraModeItem" Content="无动画镜头"/>
-                </ComboBox>
-                <Slider x:Name="AnimationSlider" Grid.Column="2" Minimum="0" Maximum="1" Value="0" IsEnabled="False" IsMoveToPointEnabled="True" ValueChanged="AnimationSlider_ValueChanged" PreviewMouseLeftButtonDown="AnimationSlider_PreviewMouseLeftButtonDown"/>
-                <TextBlock x:Name="TimelineText" Grid.Column="3" Text="0.00 / 0.00 s" Foreground="#9CDCFE" VerticalAlignment="Center" MinWidth="105" TextAlignment="Right" Margin="8,0,0,0"/>
-                <Border Grid.Column="4" Background="#111923" BorderBrush="#3A485C" BorderThickness="1" CornerRadius="5" Margin="10,0,0,0" Padding="7,0" Width="78" Height="30" VerticalAlignment="Center" ToolTip="动画实际播放帧率，目标 60 FPS">
+                <Grid Grid.Column="1" Height="30">
+                  <Slider x:Name="AnimationSlider" VerticalAlignment="Center" Minimum="0" Maximum="1" Value="0" IsEnabled="False" IsMoveToPointEnabled="False"
+                          ValueChanged="AnimationSlider_ValueChanged" PreviewMouseLeftButtonDown="AnimationSlider_PreviewMouseLeftButtonDown"
+                          PreviewMouseMove="AnimationSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="AnimationSlider_PreviewMouseLeftButtonUp"
+                          LostMouseCapture="AnimationSlider_LostMouseCapture"/>
+                </Grid>
+                <TextBlock x:Name="TimelineText" Grid.Column="2" Text="0.00 / 0.00 s" Foreground="#9CDCFE" VerticalAlignment="Center" MinWidth="105" TextAlignment="Right" Margin="8,0,0,0"/>
+                <Border Grid.Column="3" Background="#111923" BorderBrush="#3A485C" BorderThickness="1" CornerRadius="5" Margin="10,0,0,0" Padding="7,0" Width="78" Height="30" VerticalAlignment="Center" ToolTip="动画实际播放帧率，目标 60 FPS">
                   <TextBlock x:Name="PlaybackFpsText" Text="-- FPS" Foreground="#8F9BAD" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="NoWrap" VerticalAlignment="Center"/>
                 </Border>
               </Grid>

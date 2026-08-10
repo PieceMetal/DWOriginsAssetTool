@@ -11,7 +11,8 @@ public static class BlenderFbxExporter
     public static void Export(G1MInfo model, G1AClip? clip, string destination, string name, string gameRoot, bool includeGeometry = true,
         ActionCameraClip? camera = null, IProgress<(string Stage, int Percent)>? progress = null,
         bool cameraForUnrealSequencer = false, double cameraAspectRatio = 1.5,
-        GltfExporter.AccessoryExport? accessory = null, bool weaponAttachmentOrientation = false)
+        GltfExporter.AccessoryExport? accessory = null, bool weaponAttachmentOrientation = false,
+        IReadOnlyList<GltfExporter.BakedCameraFrame>? bakedCamera = null)
     {
         progress?.Report(("正在查找 Blender", 2));
         var blender = FindBlender(gameRoot) ?? throw new InvalidOperationException(
@@ -29,17 +30,23 @@ public static class BlenderFbxExporter
             // UE converts the FBX meter value to its native centimeters.  Writing
             // game centimeters as meters makes every camera position 100x too far.
             GltfExporter.Export(model, clip, gltf, name, includeGeometry, camera,
-                0.01f, 1f, accessory);
+                0.01f, 1f, accessory, bakedCamera);
             progress?.Report(("正在准备 Blender 导出", 25));
             string? cameraFovPath = null;
-            if (camera is not null)
+            if (camera is not null || bakedCamera is { Count: > 0 })
             {
                 cameraFovPath = Path.Combine(work, "camera_fov.json");
-                var frames = GltfCameraTimes(camera.Clip.Info.Duration).Select(time =>
-                    ActionCameraCatalog.Sample(camera, time).FieldOfView).ToArray();
-                var transforms = GltfCameraTimes(camera.Clip.Info.Duration).Select(time =>
+                var sampledFrames = bakedCamera is { Count: > 0 }
+                    ? bakedCamera
+                    : GltfCameraTimes(camera!.Clip.Info.Duration).Select(time =>
+                    {
+                        var frame = ActionCameraCatalog.Sample(camera, time);
+                        return new GltfExporter.BakedCameraFrame(time, frame.Position, frame.Forward,
+                            frame.Up, frame.FieldOfView);
+                    }).ToArray();
+                var frames = sampledFrames.Select(frame => frame.FieldOfView).ToArray();
+                var transforms = sampledFrames.Select(frame =>
                 {
-                    var frame = ActionCameraCatalog.Sample(camera, time);
                     return new
                     {
                         // Sequencer consumes camera transforms in UE's native

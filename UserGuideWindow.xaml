@@ -26,7 +26,7 @@
         <Border Background="#252416" BorderBrush="#705627" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,14">
           <StackPanel>
             <TextBlock Text="首次使用" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="首次使用必须完成两步：① 点击左侧高亮的“选择游戏目录”，选择包含 DWORIGINS.exe 和 File 文件夹的游戏根目录；② 点击黄色提示区中的“立即初始化完整游戏资源（必选）”。初始化完成后，工具才能恢复正式名称、角色/武器/动画分类和镜头关联。"
+            <TextBlock Text="首次使用时，在左侧选择包含 DWORIGINS.exe 和 File 文件夹的游戏目录，然后点击“初始化游戏资源”。初始化完成后，工具会恢复正式名称、角色/武器/动画分类和镜头关联。"
                        Foreground="#D5DCE6" TextWrapping="Wrap" LineHeight="21" Margin="0,7,0,0"/>
           </StackPanel>
         </Border>
@@ -39,11 +39,11 @@
             <TextBlock Text="2   快捷预览" FontWeight="SemiBold"/>
             <TextBlock Text="在右侧“效果预览器”依次选择角色、武器和动画。切换武器时，动画列表会自动切换为对应的“角色 · 武器”动作集；选择带镜头标记的动画后，可切换为动画镜头。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
             <TextBlock Text="3   视口操作" FontWeight="SemiBold"/>
-            <TextBlock Text="左键旋转、右键或中键平移、滚轮缩放；按 F 对当前模型全部取景。顶部可切换实体、材质和线框显示。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
+            <TextBlock Text="默认使用 UE 动画编辑器操作：Alt+左键旋转、Alt+中键平移、Alt+右键推拉，F 聚焦当前模型，空格播放或暂停。也可使用 RE 工具操作：左键旋转、右键或中键平移、滚轮缩放。拖动时间轴时会自动暂停。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
             <TextBlock Text="4   动画与镜头" FontWeight="SemiBold"/>
-            <TextBlock Text="使用底部时间轴播放或拖动定位。自由镜头下可显示动画摄像机、镜头轨迹和实时镜头数据。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
+            <TextBlock Text="使用底部时间轴播放或按住任意位置持续拖动。青色、黄色、紫色菱形分别表示镜头机位、观察目标、镜头参数的原始 K 帧；橙色方块表示已确认的摄像机配置/调用事件，灰蓝色方块表示普通动作或特效事件（不代表镜头效果），绿色色条表示配置持续区间。开启“吸附关键帧”后会优先定位附近原始 K 点或配置事件。镜头轨迹在载入后保持完整显示，播放循环和拖动时间轴只移动当前帧标记。勾选“镜头双视图”后才会分成左右视图，两边可分别选择自由镜头、动画镜头、配置镜头（本体模拟）或最终合成，并始终同步同一帧。配置镜头读取游戏本体 DefaultPlayer 字段，并恢复 GetLastCommitChangedCameraW2V → MatrixInverseAffine → VectorTransformNormal → FollowCamera2 的初始视角关系；切换前的已提交镜头方向会成为控制器初态，不继承角色技能的左右旋转。动作 Root 只提取相对首帧的前后位移。尚未完整恢复的《起源》战斗预设覆盖值、目标胶囊、敌人目标和地形碰撞会明确标记为近似，不冒充最终实机画面。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,10"/>
             <TextBlock Text="5   FBX 导出" FontWeight="SemiBold"/>
-            <TextBlock Text="右下角可分别导出模型、角色动画和镜头动画。文件会自动保存到工具 EXE 旁的 DWOrigins_Exports 文件夹。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,0"/>
+            <TextBlock Text="右下角可分别导出模型、角色动画和镜头动画。动画镜头、配置镜头和最终合成都按工具当前画面完整烘焙为 60 FPS 的机位、旋转、Roll 与 FOV；最终合成会同时烘焙动画镜头和配置层。文件会自动保存到工具 EXE 旁的 DWOrigins_Exports 文件夹。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,0"/>
             <TextBlock Text="6   任务进度" FontWeight="SemiBold" Margin="0,10,0,0"/>
             <TextBlock Text="初始化资源时进度条显示在中央视口下方；加载动画时间轴后，导出进度会自动显示在时间轴正上方。任务完成或失败后会自动隐藏，不会挤压视口。" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="20" Margin="22,4,0,0"/>
           </StackPanel>

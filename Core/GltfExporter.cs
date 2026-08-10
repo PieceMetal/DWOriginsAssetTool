@@ -12,6 +12,8 @@ namespace DWOriginsAssetTool.Core;
 /// </summary>
 public static class GltfExporter
 {
+    public sealed record BakedCameraFrame(float Time, Vector3 Position, Vector3 Forward, Vector3 Up,
+        float FieldOfView);
     public sealed record AccessoryExport(G1MInfo Model, ModelAttachmentComposer.Attachment Attachment,
         Matrix4x4 Adjustment, string Name);
 
@@ -25,7 +27,8 @@ public static class GltfExporter
 
     public static void Export(G1MInfo model, G1AClip? clip, string destination, string name, bool includeGeometry = true,
         ActionCameraClip? camera = null, float cameraPositionScale = GameCentimetersToMeters,
-        float cameraObjectScale = 1f, AccessoryExport? accessory = null)
+        float cameraObjectScale = 1f, AccessoryExport? accessory = null,
+        IReadOnlyList<BakedCameraFrame>? bakedCamera = null)
     {
         var data = new BinaryBuffer();
         var bufferViews = new List<Dictionary<string, object?>>();
@@ -215,9 +218,14 @@ public static class GltfExporter
         }
         nodes[0]["children"] = rootChildren;
 
-        if (camera is not null)
+        var initialCameraFrame = bakedCamera is { Count: > 0 }
+            ? bakedCamera[0]
+            : camera is not null
+                ? ToBakedCameraFrame(0, ActionCameraCatalog.Sample(camera, 0))
+                : null;
+        if (initialCameraFrame is not null)
         {
-            var frame = ActionCameraCatalog.Sample(camera, 0);
+            var frame = initialCameraFrame;
             var cameraRotation = CameraRotation(frame.Forward, frame.Up);
             cameraNodeId = nodes.Count;
             nodes.Add(new Dictionary<string, object?>
@@ -248,7 +256,9 @@ public static class GltfExporter
         if (clip is not null && model.Bones.Count > 0)
             animation = BuildAnimation(model, clip, data, bufferViews, accessors);
         Dictionary<string, object?>? cameraAnimation = null;
-        if (camera is not null)
+        if (bakedCamera is { Count: > 0 })
+            cameraAnimation = BuildCameraAnimation(bakedCamera, cameraNodeId, data, bufferViews, accessors, cameraPositionScale);
+        else if (camera is not null)
             cameraAnimation = BuildCameraAnimation(camera, cameraNodeId, data, bufferViews, accessors, cameraPositionScale);
         var sceneNodes = cameraNodeId >= 0 ? new[] { 0, cameraNodeId } : new[] { 0 };
         var root = new Dictionary<string, object?>
@@ -296,6 +306,42 @@ public static class GltfExporter
         }
         return new Dictionary<string, object?> { ["name"] = "ActionCamera", ["samplers"] = samplers, ["channels"] = channels };
     }
+
+    private static Dictionary<string, object?> BuildCameraAnimation(IReadOnlyList<BakedCameraFrame> frames, int nodeId,
+        BinaryBuffer data, List<Dictionary<string, object?>> views,
+        List<Dictionary<string, object?>> accessors, float positionScale)
+    {
+        int AddAccessor(byte[] bytes, int count, string type)
+        {
+            var offset = data.Append(bytes);
+            views.Add(new Dictionary<string, object?> { ["buffer"] = 0, ["byteOffset"] = offset, ["byteLength"] = bytes.Length });
+            accessors.Add(new Dictionary<string, object?> { ["bufferView"] = views.Count - 1, ["componentType"] = Float, ["count"] = count, ["type"] = type });
+            return accessors.Count - 1;
+        }
+        var times = frames.Select(x => x.Time).ToArray();
+        var positions = new float[times.Length * 3];
+        var rotations = new float[times.Length * 4];
+        for (var i = 0; i < frames.Count; i++)
+        {
+            WriteVector(positions, i * 3, frames[i].Position * positionScale);
+            WriteQuaternion(rotations, i * 4, CameraRotation(frames[i].Forward, frames[i].Up));
+        }
+        var input = AddAccessor(ToBytes(times), times.Length, "SCALAR");
+        var samplers = new List<Dictionary<string, object?>>();
+        var channels = new List<Dictionary<string, object?>>();
+        AddChannel("translation", AddAccessor(ToBytes(positions), times.Length, "VEC3"));
+        AddChannel("rotation", AddAccessor(ToBytes(rotations), times.Length, "VEC4"));
+        return new Dictionary<string, object?> { ["name"] = "ActionCamera", ["samplers"] = samplers, ["channels"] = channels };
+
+        void AddChannel(string path, int output)
+        {
+            samplers.Add(new Dictionary<string, object?> { ["input"] = input, ["output"] = output, ["interpolation"] = "LINEAR" });
+            channels.Add(new Dictionary<string, object?> { ["sampler"] = samplers.Count - 1, ["target"] = new Dictionary<string, object?> { ["node"] = nodeId, ["path"] = path } });
+        }
+    }
+
+    private static BakedCameraFrame ToBakedCameraFrame(float time, ActionCameraFrame frame) =>
+        new(time, frame.Position, frame.Forward, frame.Up, frame.FieldOfView);
 
     private static Dictionary<string, object?> BuildAnimation(G1MInfo model, G1AClip clip, BinaryBuffer data,
         List<Dictionary<string, object?>> views, List<Dictionary<string, object?>> accessors)

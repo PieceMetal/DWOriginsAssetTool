@@ -22,6 +22,12 @@ DWOrigins_Unpacked/
 # Local tools and reverse-engineering scratch data
 Tools/
 tmp*/
+.tools/
+LocalBuilds/
+docs/
+*.recovered
+*.pre_full_restore_*
+*.corrupt_backup_*
 *.zip
 *.7z
 *.rar
