@@ -8,9 +8,9 @@ using System.Windows.Shapes;
 namespace DWOriginsAssetTool;
 
 public sealed record CameraCurvePoint(double Time, double? ActionFov, double? ActionDistance,
-    double? ConfiguredFov, double? ConfiguredDistance, double? CameraSpeed, double? TargetSpeed);
+    double? CameraSpeed, double? TargetSpeed);
 
-public sealed record CameraCurveEvent(double Time, string Label, string Kind, bool IsConfiguration);
+public sealed record CameraCurveEvent(double Time, string Label, string Kind);
 
 public sealed record CameraCurveSnapshot(string Title, string Subtitle, double Duration,
     double CurrentTime, IReadOnlyList<CameraCurvePoint> Points, IReadOnlyList<CameraCurveEvent> Events,
@@ -73,21 +73,14 @@ public partial class CameraCurveWindow : Window
         DrawGrid(left, top, plotW, plotH, duration);
 
         var values = new List<double>();
-        if (ActionCameraCheck.IsChecked == true)
-        {
+        if (FovCheck.IsChecked == true)
             values.AddRange(_snapshot.Points.Select(x => x.ActionFov).Where(x => x.HasValue).Select(x => x!.Value));
+        if (DistanceCheck.IsChecked == true)
             values.AddRange(_snapshot.Points.Select(x => x.ActionDistance).Where(x => x.HasValue).Select(x => x!.Value));
-        }
-        if (ConfiguredCameraCheck.IsChecked == true)
-        {
-            values.AddRange(_snapshot.Points.Select(x => x.ConfiguredFov).Where(x => x.HasValue).Select(x => x!.Value));
-            values.AddRange(_snapshot.Points.Select(x => x.ConfiguredDistance).Where(x => x.HasValue).Select(x => x!.Value));
-        }
-        if (SpeedCheck.IsChecked == true)
-        {
+        if (CameraSpeedCheck.IsChecked == true)
             values.AddRange(_snapshot.Points.Select(x => x.CameraSpeed).Where(x => x.HasValue).Select(x => x!.Value));
+        if (TargetSpeedCheck.IsChecked == true)
             values.AddRange(_snapshot.Points.Select(x => x.TargetSpeed).Where(x => x.HasValue).Select(x => x!.Value));
-        }
 
         if (values.Count == 0)
         {
@@ -110,21 +103,14 @@ public partial class CameraCurveWindow : Window
         double X(double t) => left + Math.Clamp(t / duration, 0, 1) * plotW;
         double Y(double v) => top + (1 - Math.Clamp((v - min) / (max - min), 0, 1)) * plotH;
 
-        if (ActionCameraCheck.IsChecked == true)
-        {
+        if (FovCheck.IsChecked == true)
             DrawCurve(_snapshot.Points, x => x.ActionFov, X, Y, Color.FromRgb(185, 122, 236), 2.0, _snapshot.KeyTimes);
+        if (DistanceCheck.IsChecked == true)
             DrawCurve(_snapshot.Points, x => x.ActionDistance, X, Y, Color.FromRgb(88, 210, 236), 2.0, _snapshot.KeyTimes);
-        }
-        if (ConfiguredCameraCheck.IsChecked == true)
-        {
-            DrawCurve(_snapshot.Points, x => x.ConfiguredFov, X, Y, Color.FromRgb(242, 184, 72), 2.0, _snapshot.Events.Where(x => x.IsConfiguration).Select(x => x.Time));
-            DrawCurve(_snapshot.Points, x => x.ConfiguredDistance, X, Y, Color.FromRgb(99, 214, 143), 2.0, _snapshot.Events.Where(x => x.IsConfiguration).Select(x => x.Time));
-        }
-        if (SpeedCheck.IsChecked == true)
-        {
+        if (CameraSpeedCheck.IsChecked == true)
             DrawCurve(_snapshot.Points, x => x.CameraSpeed, X, Y, Color.FromRgb(255, 126, 126), 1.4, _snapshot.KeyTimes);
+        if (TargetSpeedCheck.IsChecked == true)
             DrawCurve(_snapshot.Points, x => x.TargetSpeed, X, Y, Color.FromRgb(126, 162, 255), 1.4, _snapshot.KeyTimes);
-        }
 
         foreach (var marker in _snapshot.Events)
         {
@@ -135,9 +121,9 @@ public partial class CameraCurveWindow : Window
                 X2 = markerX,
                 Y1 = top,
                 Y2 = top + plotH,
-                Stroke = new SolidColorBrush(marker.IsConfiguration ? Color.FromRgb(241, 190, 72) : Color.FromRgb(96, 117, 141)),
+                Stroke = new SolidColorBrush(Color.FromRgb(96, 117, 141)),
                 StrokeThickness = 1,
-                Opacity = marker.IsConfiguration ? .78 : .45,
+                Opacity = .45,
                 ToolTip = $"{marker.Time:0.000}s  {marker.Kind}  {marker.Label}"
             };
             CurveCanvas.Children.Add(line);
@@ -169,9 +155,7 @@ public partial class CameraCurveWindow : Window
         var nearest = _snapshot.Points.MinBy(x => Math.Abs(x.Time - _snapshot.CurrentTime));
         if (nearest is not null)
             DrawCurrentValueLabels(nearest, X, Y);
-        InfoText.Text = nearest is null
-            ? ""
-            : $"t={nearest.Time:0.000}s  动画FOV={Fmt(nearest.ActionFov)}  动画Dist={Fmt(nearest.ActionDistance)}  配置FOV={Fmt(nearest.ConfiguredFov)}  配置Dist={Fmt(nearest.ConfiguredDistance)}  CamSpeed={Fmt(nearest.CameraSpeed)}  TargetSpeed={Fmt(nearest.TargetSpeed)}";
+        InfoText.Text = nearest is null ? "" : BuildCurrentInfo(nearest);
         RangeText.Text = $"Y {min:0.##} – {max:0.##}";
     }
 
@@ -241,12 +225,10 @@ public partial class CameraCurveWindow : Window
     {
         var items = new (string Label, double? Value, Color Color)[]
         {
-            ("动画FOV", point.ActionFov, Color.FromRgb(185, 122, 236)),
-            ("动画Dist", point.ActionDistance, Color.FromRgb(88, 210, 236)),
-            ("配置FOV", point.ConfiguredFov, Color.FromRgb(242, 184, 72)),
-            ("配置Dist", point.ConfiguredDistance, Color.FromRgb(99, 214, 143)),
-            ("CamSpeed", point.CameraSpeed, Color.FromRgb(255, 126, 126)),
-            ("TargetSpeed", point.TargetSpeed, Color.FromRgb(126, 162, 255))
+            ("视野角度", FovCheck.IsChecked == true ? point.ActionFov : null, Color.FromRgb(185, 122, 236)),
+            ("镜头距离", DistanceCheck.IsChecked == true ? point.ActionDistance : null, Color.FromRgb(88, 210, 236)),
+            ("机位速度", CameraSpeedCheck.IsChecked == true ? point.CameraSpeed : null, Color.FromRgb(255, 126, 126)),
+            ("目标速度", TargetSpeedCheck.IsChecked == true ? point.TargetSpeed : null, Color.FromRgb(126, 162, 255))
         };
         var visible = items.Where(i => i.Value.HasValue && double.IsFinite(i.Value.Value)).ToArray();
         var baseX = Math.Min(CurveCanvas.ActualWidth - 150, x(point.Time) + 8);
@@ -313,4 +295,14 @@ public partial class CameraCurveWindow : Window
 
     private static string Fmt(double? value) => value.HasValue && double.IsFinite(value.Value)
         ? value.Value.ToString("0.###", CultureInfo.InvariantCulture) : "-";
+
+    private string BuildCurrentInfo(CameraCurvePoint point)
+    {
+        var values = new List<string> { $"t={point.Time:0.000}s" };
+        if (FovCheck.IsChecked == true) values.Add($"视野角度={Fmt(point.ActionFov)}");
+        if (DistanceCheck.IsChecked == true) values.Add($"镜头距离={Fmt(point.ActionDistance)}");
+        if (CameraSpeedCheck.IsChecked == true) values.Add($"机位速度={Fmt(point.CameraSpeed)}");
+        if (TargetSpeedCheck.IsChecked == true) values.Add($"目标速度={Fmt(point.TargetSpeed)}");
+        return string.Join("  ", values);
+    }
 }

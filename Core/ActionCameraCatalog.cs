@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Security.Cryptography;
 
 namespace DWOriginsAssetTool.Core;
 
@@ -29,8 +30,9 @@ public static class ActionCameraCatalog
         if (data is null)
             return new Dictionary<string, Binding>(StringComparer.OrdinalIgnoreCase);
         var (records, animationPaths) = data.Value;
-        // Durations are diagnostic metadata only. The game can schedule a local
-        // camera segment shorter than its actor action.
+        // Standalone preview bindings require an equal-duration actor and camera clip.
+        // KIDS also references local camera snippets used by larger runtime sequences;
+        // those are not the corresponding full camera animation for an actor clip.
         var durationCache = new Dictionary<uint, float>();
         float Duration(uint id)
         {
@@ -45,6 +47,10 @@ public static class ActionCameraCatalog
             return value;
         }
         var candidates = new List<(string Key, Binding Binding, float Difference)>();
+        // Actor clips whose authored KIDS Action actually contains CameraData. The
+        // referenced camera can be only a local segment, but its presence proves that
+        // the action was designed as a camera action.
+        var cameraAuthoredAnimations = new HashSet<uint>();
         foreach (var action in records.Values.Where(x => x.Type == ActionType))
         {
             var references = References(action).Distinct().ToArray();
@@ -53,6 +59,8 @@ public static class ActionCameraCatalog
                 .SelectMany(x => References(x!)).Where(animationPaths.ContainsKey).Distinct().ToArray();
             var cameraObjects = references.Select(id => records.GetValueOrDefault(id))
                 .Where(x => x?.Type == CameraAnimationDataType).ToArray();
+            if (cameraObjects.Length > 0)
+                cameraAuthoredAnimations.UnionWith(modelAnimations);
             var startFrame = action.Properties.TryGetValue(StartFrameProperty, out var start)
                 ? start.FloatValues.FirstOrDefault() : 0;
             foreach (var cameraObject in cameraObjects)
@@ -67,6 +75,10 @@ public static class ActionCameraCatalog
                         var key = $"{animationId:x8}";
                         var actionDuration = Duration(animationId);
                         var cameraDuration = Duration(cameraAnimationId);
+                        const float durationTolerance = .001f;
+                        if (!float.IsFinite(actionDuration) || !float.IsFinite(cameraDuration) ||
+                            Math.Abs(actionDuration - cameraDuration) > durationTolerance)
+                            continue;
                         var difference = float.IsFinite(actionDuration) && float.IsFinite(cameraDuration)
                             ? Math.Abs(actionDuration - cameraDuration) : float.PositiveInfinity;
                         var localSegment = difference > .001f;
@@ -81,17 +93,135 @@ public static class ActionCameraCatalog
                 }
             }
         }
-        // A single actor animation can occur in several authored action graphs.
-        // Prefer the full-duration camera when present; otherwise keep the
-        // directly referenced local segment instead of discarding it merely
-        // because its duration is shorter than the actor action.
-        return candidates.GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x
+        // Field_Common contains full-length standalone camera variants beside the local
+        // camera snippet referenced by this Zhao Yun spear action. The three tall-actor
+        // variants are byte-identical; use their canonical first resource. This restores
+        // the complete 4.9 s timeline instead of the action object's 3.1 s local segment.
+        AddRecoveredFullLengthBinding("8b508abf", "0e3329d3", "41865d48", "e9305c48");
+        AddEqualDurationCharacterBindings("H0008_Chouun0", [0xe3f1c103u]);
+
+        void AddRecoveredFullLengthBinding(string animationHex, string cameraHex,
+            string actionObjectHex, string cameraObjectHex)
+        {
+            uint animationId = Convert.ToUInt32(animationHex, 16);
+            uint cameraId = Convert.ToUInt32(cameraHex, 16);
+            if (!animationPaths.TryGetValue(animationId, out _) ||
+                !animationPaths.TryGetValue(cameraId, out var cameraPath)) return;
+            var actionDuration = Duration(animationId);
+            var cameraDuration = Duration(cameraId);
+            if (!float.IsFinite(actionDuration) || !float.IsFinite(cameraDuration) ||
+                Math.Abs(actionDuration - cameraDuration) > .001f) return;
+            candidates.Add((animationHex, new(animationHex, cameraHex, cameraPath,
+                actionObjectHex, cameraObjectHex, 0,
+                $"KIDS recovered full camera: {animationHex} / {cameraHex}; equal timeline " +
+                $"{actionDuration:0.###}s; Field_Common tall-actor camera variant",
+                actionDuration, cameraDuration, false), 0));
+        }
+
+        void AddEqualDurationCharacterBindings(string ownerName,
+            IReadOnlyCollection<uint> externallyConfirmedCameraActions)
+        {
+            var existing = candidates.Select(candidate => candidate.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var ownership = KidsAnimationCatalog.Build(gameRoot);
+            var ownedAnimations = ownership
+                .Where(pair => pair.Value.Owners.Any(owner =>
+                    owner.Contains(ownerName, StringComparison.OrdinalIgnoreCase)))
+                .Select(pair => pair.Key)
+                .Where(id => uint.TryParse(id, System.Globalization.NumberStyles.HexNumber, null, out _))
+                .Select(id => Convert.ToUInt32(id, 16))
+                .Where(animationPaths.ContainsKey)
+                .ToArray();
+            var cameraWrappers = records.Values.Where(record => record.Type == CameraMotionWrapperType).ToArray();
+            var cameraIds = cameraWrappers.SelectMany(References).Distinct()
+                .Where(animationPaths.ContainsKey)
+                .Where(id => animationPaths[id].Contains("Field_Common.character.level",
+                    StringComparison.OrdinalIgnoreCase))
+                .Where(id =>
+                {
+                    try
+                    {
+                        var info = G1Parsers.ReadAnimation(animationPaths[id]);
+                        if (info.TrackCount > 8) return false;
+                        var clip = G1Parsers.ReadAnimationClip(animationPaths[id]);
+                        return clip.Tracks.Any(track => track.Opcode is 4 or 6 or 8 or 0x66);
+                    }
+                    catch { return false; }
+                })
+                .OrderBy(id => id)
+                .ToArray();
+
+            foreach (var animationId in ownedAnimations.OrderBy(id => id))
+            {
+                var animationHex = $"{animationId:x8}";
+                if (existing.Contains(animationHex)) continue;
+                if (!cameraAuthoredAnimations.Contains(animationId) &&
+                    !externallyConfirmedCameraActions.Contains(animationId)) continue;
+                try
+                {
+                    // Zhao Yun's authored character skill clips use the complete 232-track
+                    // character rig. The ownership graph also reaches 66-track generic hit,
+                    // reaction and auxiliary clips; equal duration alone must not turn those
+                    // into cinematic actions.
+                    if (ownerName.Equals("H0008_Chouun0", StringComparison.OrdinalIgnoreCase) &&
+                        G1Parsers.ReadAnimation(animationPaths[animationId]).TrackCount != 232) continue;
+                }
+                catch { continue; }
+                var actionDuration = Duration(animationId);
+                if (!float.IsFinite(actionDuration)) continue;
+                var cameraId = cameraIds.FirstOrDefault(id =>
+                    Math.Abs(Duration(id) - actionDuration) <= .001f);
+                if (cameraId == 0) continue;
+                var cameraDuration = Duration(cameraId);
+                var wrapper = cameraWrappers.FirstOrDefault(record => References(record).Contains(cameraId));
+                candidates.Add((animationHex, new(animationHex, $"{cameraId:x8}", animationPaths[cameraId],
+                    "duration-match", wrapper is null ? "duration-match" : $"{wrapper.Hash:x8}", 0,
+                    $"Equal-duration camera match: {animationHex} / {cameraId:x8}; " +
+                    $"owner {ownerName}; timeline {actionDuration:0.###}s",
+                    actionDuration, cameraDuration, false), 0));
+                existing.Add(animationHex);
+            }
+        }
+        // A single actor animation can occur in several authored action graphs. All
+        // remaining candidates have equal timelines; choose deterministically.
+        var selected = candidates.GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x
                 .OrderBy(item => item.Binding.IsLocalSegment)
                 .ThenBy(item => item.Difference)
                 .ThenBy(item => item.Binding.StartFrame)
                 .ThenBy(item => item.Binding.CameraAnimationId, StringComparer.OrdinalIgnoreCase)
-                .First().Binding, StringComparer.OrdinalIgnoreCase);
+                .First().Binding)
+            .ToArray();
+
+        // The shipped database contains several resource IDs for byte-identical actor
+        // and camera clips. Collapse only strict duplicates within the same character;
+        // equal duration or one matching side alone is not sufficient.
+        var allOwnership = KidsAnimationCatalog.Build(gameRoot);
+        var shaCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string FileSha(string path)
+        {
+            if (shaCache.TryGetValue(path, out var sha)) return sha;
+            try { sha = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))); }
+            catch { sha = path; }
+            return shaCache[path] = sha;
+        }
+        string OwnerKey(string animationId) => allOwnership.TryGetValue(animationId, out var owner)
+            ? string.Join("|", owner.Owners.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+            : $"unknown:{animationId}";
+        var deduplicated = selected
+            .GroupBy(binding =>
+            {
+                var actorId = Convert.ToUInt32(binding.AnimationId, 16);
+                var actorPath = animationPaths.GetValueOrDefault(actorId, binding.AnimationId);
+                return $"{OwnerKey(binding.AnimationId)}\0{FileSha(actorPath)}\0{FileSha(binding.CameraPath)}";
+            }, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderBy(binding =>
+                    animationPaths.GetValueOrDefault(Convert.ToUInt32(binding.AnimationId, 16), binding.AnimationId),
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(binding => binding.AnimationId, StringComparer.OrdinalIgnoreCase).First())
+            .ToArray();
+        return deduplicated.ToDictionary(binding => binding.AnimationId,
+            binding => binding, StringComparer.OrdinalIgnoreCase);
     }
 
     public static ActionCameraClip Load(Binding binding)

@@ -9,6 +9,12 @@ namespace DWOriginsAssetTool.Core;
 /// </summary>
 public static class ConfiguredCameraCatalog
 {
+    public const float ZeroInputCalibrationPitchDegrees = 0f;
+    // DWORIGINS retail general-combat-camera table selected by
+    // [module+0x3c16390]+0x100 selector 0 -> row 4 in the 0x64-byte table at
+    // holder+0xf8. Row 4 stores FOV at +0x18 and distance at +0x1c.
+    public const float OriginsCombatFovDegrees = 56.1f;
+    public const float OriginsCombatDistance = 320f;
     private const uint DefaultPlayerType = 0xc4b9b28d;
     private const uint ScriptCodeProperty = 0x01ab8e7e;
     private const uint DefaultPlayerScript = 0x422b8674;
@@ -131,13 +137,20 @@ public static class ConfiguredCameraCatalog
             var cameraMode = record.Get(FollowCameraModeProperty)?.Int32Values.FirstOrDefault() ?? 0;
             var fovDelta = FirstFloat(record, FovDeltaProperty, MathF.PI);
             var updatedByDopeSheet = FirstBool(record, UpdatedByDopeSheetProperty);
-            return new(focalLength, heightOffset, moveSpeed, orbitSpeed, targetFov, capsuleRatio,
+            // The old DefaultPlayer record still supplies generic follow height and
+            // smoothing fields, but DWORIGINS does not use its 500/45 camera baseline
+            // for the retail battle view. Use the verified Origins row-4 values.
+            var originsFovRadians = OriginsCombatFovDegrees * MathF.PI / 180f;
+            return new(focalLength, heightOffset, moveSpeed, orbitSpeed, originsFovRadians, capsuleRatio,
                 cameraNear, cameraFar, cameraMode, fovDelta, updatedByDopeSheet,
-                Confidence.ApproximatePreview,
+                Confidence.GameParameterWithApproximatedSceneState,
                 $"KIDS:{Path.GetFileName(path)} object {record.ObjectHash:x8} 鈫?Script::Code 422b8674; " +
-                "2011 CE1 DefaultPlayer engine baseline (not an identified DWORIGINS combat-camera preset); " +
-                "property names restored from the shipped PropertyList; runtime controller orientation, " +
-                "scene target and collision state are unavailable");
+                "DWORIGINS retail combat-camera table holder+0xF8 row 4: FOV 56.1 degrees, distance 320; " +
+                "selector monitor kept row 4 throughout Fangtianji derived action 148; " +
+                "height/smoothing still use the shipped generic follow fields; scene collision and the unresolved " +
+                "action-controller additive distance layer are unavailable",
+                IsOriginsCombatPreset: true, RuntimeDistance: OriginsCombatDistance, RuntimeYawRadians: 0,
+                RuntimePitchRadians: ZeroInputCalibrationPitchDegrees * MathF.PI / 180f);
         }
         return null;
     }
@@ -417,11 +430,11 @@ public static class ConfiguredCameraCatalog
                 Quaternion.CreateFromAxisAngle(Vector3.UnitY, input.YawOffsetRadians));
         var sphericalForward = flat * MathF.Cos(pitch) - Vector3.UnitY * MathF.Sin(pitch);
         var position = input.Root - sphericalForward * input.Distance + Vector3.UnitY * input.HeightOffset;
-        // Retail FollowCamera2 writes the camera eye and orientation
-        // separately. It does not force a look-at constraint back to the
-        // followed object's Root. Preserve the controller-derived orientation
-        // by placing an arbitrary target one unit along that forward axis.
-        var lookAt = position + sphericalForward;
+        // The preview has no live W2V state from the game.  Aim the configured
+        // camera at the followed target so the actor remains framed while its
+        // controller root translates or jumps.  Root is supplied at the
+        // actor's visual centre by the viewport adapter.
+        var lookAt = input.Root;
         return new(position, lookAt, input.FieldOfView, input.Distance, default,
             "FollowCamera2", input.NearPlane, input.FarPlane);
     }
@@ -434,10 +447,10 @@ public static class ConfiguredCameraCatalog
     public static bool ValidateFollowCamera2Evaluator(out string error)
     {
         var baseInput = new FollowCameraInput(Vector3.Zero,
-            Vector3.Normalize(new Vector3(0, -.5f, 1)), 500, 130, 0, 0,
+            Vector3.UnitZ, 500, 130, 0, 0,
             -1, -1, 45, Confidence.ApproximatePreview, "self-test");
         var down = SampleFollowCamera2(baseInput);
-        if (!(down.Position.Y > 130 && down.LookAt.Y < down.Position.Y))
+        if (!(down.Position.Y >= 130 && down.LookAt.Y < down.Position.Y))
         {
             error = "committed downward elevation was not preserved";
             return false;
@@ -454,22 +467,35 @@ public static class ConfiguredCameraCatalog
             error = "controller translation did not move the follow camera";
             return false;
         }
+        var jumped = SampleFollowCamera2(baseInput with { Root = new Vector3(0, 180, 0) });
+        if (MathF.Abs((jumped.Position.Y - down.Position.Y) - 180) > 1e-3f ||
+            MathF.Abs(jumped.LookAt.Y - 180) > 1e-3f)
+        {
+            error = "controller jump did not move the configured camera target";
+            return false;
+        }
+        var controllerTranslation = ExtractControllerTranslation(Vector3.Zero, new Vector3(12, 180, 250));
+        if (controllerTranslation != new Vector3(0, 180, 250))
+        {
+            error = "configured camera did not separate lateral pose sway from jump/forward movement";
+            return false;
+        }
         error = "";
         return true;
     }
 
     /// <summary>
-    /// Offline approximation of the translation that the action system hands
-    /// to the player controller. Retail MoveWithCharacterController is a
-    /// separate runtime stage from FollowCamera2; only forward/back locomotion
-    /// is retained here until UC_MoveType dispatch and collision state are
-    /// fully recovered. Lateral pose sway, height and root rotation are never
-    /// allowed to steer the camera.
+    /// Translation that the action root contributes to the configured camera
+    /// target. Root X contains lateral pose sway for ordinary attacks and is
+    /// not a reliable player-controller displacement, so it must not steer the
+    /// camera. Keep Y for jumps and Z for forward/back controller movement.
     /// </summary>
     public static Vector3 ExtractControllerTranslation(Vector3 firstRootTranslation,
         Vector3 currentRootTranslation)
     {
         var delta = currentRootTranslation - firstRootTranslation;
-        return new Vector3(0, 0, float.IsFinite(delta.Z) ? delta.Z : 0);
+        return new Vector3(0,
+            float.IsFinite(delta.Y) ? delta.Y : 0,
+            float.IsFinite(delta.Z) ? delta.Z : 0);
     }
 }

@@ -57,7 +57,6 @@
                            TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0,0,0"/>
               </Grid>
               <TextBlock x:Name="FirstUseStepsText" Text="首次使用必须完成以下两步" Foreground="#E7B64B" FontSize="11" FontWeight="SemiBold" Margin="1,0,0,8"/>
-              <TextBlock Text="第 1 步 · 选择游戏目录" Foreground="#CBD5E1" FontSize="10" FontWeight="SemiBold" Margin="1,0,0,5"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/></Grid.ColumnDefinitions>
                 <Button x:Name="SelectGameRootButton" Content="选择游戏目录" Click="OpenRoot_Click" Style="{StaticResource AccentButtonStyle}" Margin="0,0,5,0" Padding="12,8"/>
@@ -143,7 +142,7 @@
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="镜头工具" Foreground="#83CFF4" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,7,0"/>
                   <Button x:Name="CameraCurveButton" Content="镜头曲线" Click="CameraCurve_Click" IsEnabled="False" Padding="11,5" Margin="0" ToolTip="打开镜头参数曲线、原始 K 帧和动作事件标记"/>
-                  <CheckBox x:Name="CameraDataCheck" Content="镜头数据" Click="CameraData_Changed" IsEnabled="False" Margin="10,0,1,0" VerticalAlignment="Center" ToolTip="打开实时镜头数据浮窗"/>
+                  <Button x:Name="CameraDataButton" Content="镜头数据" Click="CameraData_Click" IsEnabled="False" Padding="11,5" Margin="10,0,1,0" VerticalAlignment="Center" ToolTip="打开实时镜头数据浮窗"/>
                 </StackPanel>
               </Border>
               <Border Grid.Column="6" Background="#112332" BorderBrush="#24465D" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,2,0" VerticalAlignment="Center"><TextBlock x:Name="ViewportStats" Text="G1M VIEWPORT" Foreground="#83CFF4" FontSize="10" FontWeight="SemiBold"/></Border>
@@ -195,12 +194,15 @@
                     MouseDown="Viewport_MouseDown" MouseUp="Viewport_MouseUp" KeyDown="ViewportInput_KeyDown"/>
             <Border x:Name="PrimaryModePanel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14"
                     Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="8" Padding="8,5">
-              <ComboBox x:Name="CameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed">
-                <ComboBoxItem Content="自由镜头"/>
-                <ComboBoxItem x:Name="LinkedCameraModeItem" Content="动画镜头" Visibility="Collapsed" IsEnabled="False"/>
-                <ComboBoxItem x:Name="ConfiguredCameraModeItem" Content="配置镜头" Visibility="Collapsed" IsEnabled="False"/>
-                <ComboBoxItem x:Name="CompositeCameraModeItem" Content="最终合成" Visibility="Collapsed" IsEnabled="False"/>
-              </ComboBox>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="镜头选择" Foreground="#BAC4D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ComboBox x:Name="CameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="True" SelectionChanged="CameraMode_Changed">
+                  <ComboBoxItem Content="自由镜头"/>
+                  <ComboBoxItem x:Name="LinkedCameraModeItem" Content="动画镜头" Visibility="Visible" IsEnabled="False" ToolTip="当前动作没有关联动画镜头"/>
+                  <ComboBoxItem x:Name="ConfiguredCameraModeItem" Visibility="Collapsed" IsEnabled="False"/>
+                  <ComboBoxItem x:Name="CompositeCameraModeItem" Visibility="Collapsed" IsEnabled="False"/>
+                </ComboBox>
+              </StackPanel>
             </Border>
             <GridSplitter x:Name="ComparisonViewportSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                           Background="#344359" Visibility="Collapsed"/>
@@ -233,12 +235,15 @@
               <Border x:Name="ComparisonModePanel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="14"
                       Background="#E0131A24" BorderBrush="#344359" BorderThickness="1" CornerRadius="8" Padding="8,5"
                       Visibility="Collapsed">
-                <ComboBox x:Name="ComparisonCameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="False" SelectionChanged="CameraMode_Changed">
-                  <ComboBoxItem Content="自由镜头"/>
-                  <ComboBoxItem x:Name="ComparisonActionCameraModeItem" Content="动画镜头" Visibility="Collapsed" IsEnabled="False"/>
-                  <ComboBoxItem x:Name="ComparisonConfiguredCameraModeItem" Content="配置镜头" Visibility="Collapsed" IsEnabled="False"/>
-                  <ComboBoxItem x:Name="ComparisonCompositeCameraModeItem" Content="最终合成" Visibility="Collapsed" IsEnabled="False"/>
-                </ComboBox>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="镜头选择" Foreground="#BAC4D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                  <ComboBox x:Name="ComparisonCameraModeCombo" Width="128" SelectedIndex="0" IsEnabled="True" SelectionChanged="CameraMode_Changed">
+                    <ComboBoxItem Content="自由镜头"/>
+                    <ComboBoxItem x:Name="ComparisonActionCameraModeItem" Content="动画镜头" Visibility="Visible" IsEnabled="False" ToolTip="当前动作没有关联动画镜头"/>
+                    <ComboBoxItem x:Name="ComparisonConfiguredCameraModeItem" Visibility="Collapsed" IsEnabled="False"/>
+                    <ComboBoxItem x:Name="ComparisonCompositeCameraModeItem" Visibility="Collapsed" IsEnabled="False"/>
+                  </ComboBox>
+                </StackPanel>
               </Border>
             </Grid>
             <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">

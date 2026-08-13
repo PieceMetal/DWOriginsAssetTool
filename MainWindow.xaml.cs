@@ -83,10 +83,6 @@ public partial class MainWindow : Window
 
     private IReadOnlyDictionary<string, ConfiguredCameraCatalog.AuthoredActionConfiguration> _authoredCameraEvents = new Dictionary<string, ConfiguredCameraCatalog.AuthoredActionConfiguration>(StringComparer.OrdinalIgnoreCase);
 
-    private ConfiguredCameraCatalog.BaseFollowSettings? _configuredCameraSettings;
-
-    private ConfiguredCameraCatalog.RuntimeConfiguration? _configuredCameraRuntime;
-
     private AssetEntry? _modelAsset;
 
     private readonly DispatcherTimer _animationTimer;
@@ -169,13 +165,25 @@ public partial class MainWindow : Window
 
     private readonly Model3DGroup _comparisonWeaponGroup = new Model3DGroup();
 
+    private readonly Model3DGroup _secondaryWeaponGroup = new Model3DGroup();
+
+    private readonly Model3DGroup _comparisonSecondaryWeaponGroup = new Model3DGroup();
+
     private readonly List<MeshGeometry3D> _weaponGeometries = new List<MeshGeometry3D>();
+
+    private readonly List<MeshGeometry3D> _secondaryWeaponGeometries = new List<MeshGeometry3D>();
 
     private G1MInfo? _weaponModel;
 
     private AssetEntry? _weaponAsset;
 
     private ModelAttachmentComposer.Attachment? _weaponAttachment;
+
+    private G1MInfo? _secondaryWeaponModel;
+
+    private AssetEntry? _secondaryWeaponAsset;
+
+    private ModelAttachmentComposer.Attachment? _secondaryWeaponAttachment;
 
     private const int DefaultWeaponAttachmentBoneId = 104;
 
@@ -360,6 +368,14 @@ public partial class MainWindow : Window
         }
         base.IsEnabled = false;
         StatusText.Text = "正在扫描资源，请稍候…";
+        UpdateProgressPanelPlacement();
+        ExportProgressPanel.Visibility = Visibility.Visible;
+        ExportProgressBar.IsIndeterminate = true;
+        ExportProgressBar.Value = 0.0;
+        ExportProgressBar.Opacity = 1.0;
+        ExportProgressPercentText.Text = "扫描中";
+        ExportProgressText.Text = "正在加载游戏资源";
+        ExportProgressDetailText.Text = "正在枚举资源文件，请勿关闭工具";
         try
         {
             string organizedRoot = System.IO.Path.Combine(_root, "DWOrigins_Unpacked");
@@ -367,16 +383,24 @@ public partial class MainWindow : Window
             Progress<(int, string)> progress = new Progress<(int, string)>(delegate ((int Count, string Path) p)
             {
                 StatusText.Text = $"已识别 {p.Count:N0} 个资源… {System.IO.Path.GetFileName(p.Path)}";
+                ExportProgressText.Text = $"正在扫描资源 · 已识别 {p.Count:N0} 个";
+                ExportProgressDetailText.Text = System.IO.Path.GetFileName(p.Path);
             });
             Task<List<AssetEntry>> scanTask = AssetScanner.ScanAsync(scanRoot, progress);
             Task<GameNameCatalog> catalogTask = (Task<GameNameCatalog>)(((object)_nameCatalog != null && _nameCatalogRoot == _root) ? ((Task)Task.FromResult(_nameCatalog)) : ((Task)KidsNameCatalogReader.BuildAsync(_root, new Progress<(int, int, string)>(delegate ((int Done, int Total, string File) p)
             {
                 StatusText.Text = $"正在恢复正式名称 {p.Done:N0}/{p.Total:N0} · {p.File}";
+                ExportProgressText.Text = "正在恢复正式名称";
+                ExportProgressDetailText.Text = $"{p.Done:N0}/{p.Total:N0} · {p.File}";
             }))));
             Task<Dictionary<string, string>> manifestTask = (Task<Dictionary<string, string>>)(scanRoot.Equals(organizedRoot, StringComparison.OrdinalIgnoreCase) ? ((Task)Task.Run(() => OrganizedResourceCatalog.ReadManifestResourceIds(organizedRoot))) : ((Task)Task.FromResult(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))));
             await Task.WhenAll(scanTask, catalogTask, manifestTask);
+            ExportProgressBar.IsIndeterminate = false;
+            ExportProgressBar.Value = 90.0;
+            ExportProgressPercentText.Text = "90%";
+            ExportProgressText.Text = "正在建立资源关联";
+            ExportProgressDetailText.Text = "正在读取动作表和动画镜头索引";
             _cameraCatalog = await Task.Run(() => ActionCameraCatalog.Build(_root));
-            _configuredCameraSettings = await Task.Run(() => ConfiguredCameraCatalog.ReadBaseFollowSettings(_root));
             _authoredCameraEvents = await Task.Run(() => ConfiguredCameraCatalog.ReadAuthoredActionConfigurations(_root));
             _all = await scanTask;
             _nameCatalog = await catalogTask;
@@ -416,6 +440,10 @@ public partial class MainWindow : Window
             DomainBox.SelectedIndex = 0;
             ApplyFilter();
             BuildQuickPreviewCatalog();
+            ExportProgressBar.Value = 100.0;
+            ExportProgressPercentText.Text = "100%";
+            ExportProgressText.Text = "游戏资源加载完成";
+            ExportProgressDetailText.Text = $"已加载 {_all.Count:N0} 个资源";
             StatusText.Text = $"扫描完成：{_all.Count:N0} 个资源 · {_nameCatalog.Bindings?.Count ?? 0:N0} 条正式名称映射 · {value2:N0} 个游戏本体动作表归属 · {_cameraCatalog.Count:N0} 组动画镜头。";
             await ApplyStartupPreviewAsync();
         }
@@ -427,6 +455,7 @@ public partial class MainWindow : Window
         finally
         {
             base.IsEnabled = true;
+            SetProgressIdle(StatusText.Text);
             UpdateResourceInitializationState();
         }
     }
@@ -925,6 +954,10 @@ public partial class MainWindow : Window
                     return;
                 }
                 CameraModeCombo.SelectedIndex = 1;
+                if (DualViewportCheck.IsChecked == true)
+                {
+                    ComparisonCameraModeCombo.SelectedIndex = 0;
+                }
                 SeekPlayback(0.0);
                 _lastTick = DateTime.UtcNow;
                 ResetPlaybackFps(playing: true);
@@ -1050,6 +1083,8 @@ public partial class MainWindow : Window
             _weaponGeometries.Clear();
             _weaponGroup.Children.Clear();
             _comparisonWeaponGroup.Children.Clear();
+            _secondaryWeaponGroup.Children.Clear();
+            _comparisonSecondaryWeaponGroup.Children.Clear();
             PlayButton.IsEnabled = false;
             AnimationSlider.IsEnabled = false;
             CameraCurveButton.IsEnabled = false;
@@ -1109,24 +1144,27 @@ public partial class MainWindow : Window
                     }
                 }
                 SetCameraKeyframes(_actionCamera);
-                _configuredCameraRuntime = (((object)_configuredCameraSettings == null || (object)_clip == null) ? null : ConfiguredCameraCatalog.BuildBaseRuntimeConfiguration(_configuredCameraSettings, _clip.Info.Duration));
-                CameraModeCombo.SelectedIndex = (((object)_actionCamera != null) ? 1 : 0);
-                UpdateCameraModeAvailability((object)_actionCamera != null, (object)_configuredCameraSettings != null);
-                CameraGizmoCheck.IsEnabled = (object)_actionCamera != null || (object)_configuredCameraSettings != null;
-                CameraTrajectoryCheck.IsEnabled = (object)_actionCamera != null || (object)_configuredCameraSettings != null;
-                CameraDataCheck.IsEnabled = (object)_actionCamera != null || (object)_configuredCameraSettings != null;
-                CameraCurveButton.IsEnabled = (object)_actionCamera != null || (object)_configuredCameraSettings != null;
-                if ((object)_actionCamera == null && (object)_configuredCameraSettings == null)
+                UpdateCameraModeAvailability((object)_actionCamera != null, hasConfiguredCamera: false);
+                CameraModeCombo.SelectedIndex = ((object)_actionCamera != null ? 1 : 0);
+                if (DualViewportCheck.IsChecked == true)
+                {
+                    ComparisonCameraModeCombo.SelectedIndex = 0;
+                }
+                CameraGizmoCheck.IsEnabled = (object)_actionCamera != null;
+                CameraTrajectoryCheck.IsEnabled = (object)_actionCamera != null;
+                CameraDataButton.IsEnabled = (object)_actionCamera != null;
+                CameraCurveButton.IsEnabled = (object)_actionCamera != null;
+                if ((object)_actionCamera == null)
                 {
                     CameraGizmoCheck.IsChecked = false;
                 }
-                if ((object)_actionCamera == null && (object)_configuredCameraSettings == null)
+                if ((object)_actionCamera == null)
                 {
                     CameraTrajectoryCheck.IsChecked = false;
                 }
-                if ((object)_actionCamera == null && (object)_configuredCameraSettings == null)
+                if ((object)_actionCamera == null)
                 {
-                    CameraDataCheck.IsChecked = false;
+                    HideCameraDataWindow();
                 }
                 UpdateActionCameraInspector(asset, cameraError);
                 DetailBody.Text = $"动画版本：{a.Version}\n文件大小：{asset.SizeText}\n时长：{a.Duration:0.###} 秒\n估算帧数（60 FPS）：{Math.Round(a.Duration * 60f):N0}\n骨骼轨道：{a.TrackCount}\n最大骨骼 ID：{a.MaxBoneId}\n动画类型：0x{a.AnimationType:X4}";
@@ -1463,7 +1501,7 @@ public partial class MainWindow : Window
             ActionCameraTitle.Text = asset.TreeDisplayName;
             ActionCameraStatus.Text = (tuple.Item1 ? "存在特效事件" : "无独立动画镜头");
             ActionCameraStatus.Foreground = (tuple.Item1 ? new SolidColorBrush(Color.FromRgb(242, 184, 72)) : ((Brush)FindResource("MutedBrush")));
-            ActionCameraDetail.Text = "动作表：" + text + "\n游戏动作对象没有引用独立 CameraAnimationData/G1A。\n当前只恢复到基础战斗跟随镜头；动作内特效事件已列出，但它们不是已解码的 FOV、Distance 或震屏曲线。\n如果实机画面有推拉、变焦或震屏，仍需继续解析特效资源、命中事件或战斗相机控制器层，不能按观感伪造。\n\n" + tuple.Item2;
+            ActionCameraDetail.Text = "动作表：" + text + "\n游戏动作对象没有引用独立 CameraAnimationData/G1A。\n该动作只能使用自由镜头预览；工具不会生成替代镜头。\n\n" + tuple.Item2;
             return;
         }
         AssetEntry assetEntry = _all.FirstOrDefault((AssetEntry x) => x.Kind == AssetKind.Animation && x.IsActionCamera && NormalizeResourceId(x.ResourceId ?? x.HashId).Equals(NormalizeResourceId(asset.ActionCameraResourceId), StringComparison.OrdinalIgnoreCase));
@@ -1731,6 +1769,8 @@ public partial class MainWindow : Window
         _comparisonScene.Children.Add(_comparisonHelperScene);
         _scene.Children.Add(_weaponGroup);
         _comparisonScene.Children.Add(_comparisonWeaponGroup);
+        _scene.Children.Add(_secondaryWeaponGroup);
+        _comparisonScene.Children.Add(_comparisonSecondaryWeaponGroup);
         if (_showGrid)
         {
             AddGrid3D(_helperScene);
@@ -2016,14 +2056,6 @@ public partial class MainWindow : Window
             {
                 ApplyActionCamera(time);
             }
-            else if (CameraModeCombo.SelectedIndex == 2 && (object)_configuredCameraSettings != null)
-            {
-                ApplyConfiguredCamera(time);
-            }
-            else if (CameraModeCombo.SelectedIndex == 3)
-            {
-                ApplyCompositeCamera(ViewportCamera, Viewport, time);
-            }
             if (DualViewportCheck.IsChecked == true)
             {
                 UpdateComparisonCamera(time);
@@ -2083,19 +2115,12 @@ public partial class MainWindow : Window
 
     private void UpdateRealtimeCameraData(float time)
     {
-        if (CameraDataCheck.IsChecked != true)
+        if (_cameraDataWindow?.IsVisible != true)
         {
             CameraDataHud.Visibility = Visibility.Collapsed;
-            HideCameraDataWindow();
             return;
         }
         CameraDataHud.Visibility = Visibility.Collapsed;
-        EnsureCameraDataWindow();
-        if (CameraModeCombo.SelectedIndex == 2 && (object)_configuredCameraSettings != null)
-        {
-            UpdateConfiguredCameraDataWindow(time);
-            return;
-        }
         if ((object)_actionCamera == null)
         {
             HideCameraDataWindow();
@@ -2111,7 +2136,9 @@ public partial class MainWindow : Window
         float value3 = Vector3.Distance(tuple.Item1, tuple.Item2);
         float value4 = MathF.Atan2(actionCameraFrame.Forward.X, actionCameraFrame.Forward.Z) * 180f / (float)Math.PI;
         float value5 = MathF.Asin(Math.Clamp(actionCameraFrame.Forward.Y, -1f, 1f)) * 180f / (float)Math.PI;
-        string text = ((CameraModeCombo.SelectedIndex == 1) ? "动画镜头数据" : "自由镜头 · 动画摄像机数据");
+        string text = CameraModeCombo.SelectedIndex == 1
+            ? "动画镜头数据"
+            : "自由镜头 · 动画摄像机数据";
         CameraHudMode.Text = text;
         _cameraDataWindow?.SetMode(text);
         double value6 = VerticalToHorizontalFov(actionCameraFrame.FieldOfView, CameraViewportAspect);
@@ -2154,115 +2181,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyConfiguredCamera(float time)
-    {
-        ApplyConfiguredCamera(ViewportCamera, Viewport, time);
-    }
-
-    private void ApplyConfiguredCamera(PerspectiveCamera camera, Viewport3D viewport, float time)
-    {
-        if (!TrySampleConfiguredCamera(time, out Point3D position, out Point3D target, out ConfiguredCameraCatalog.CameraState cameraState))
-        {
-            return;
-        }
-        Vector3D lookDirection = target - position;
-        if (!(lookDirection.LengthSquared < 1E-08))
-        {
-            camera.Position = position;
-            camera.LookDirection = lookDirection;
-            camera.UpDirection = new Vector3D(0.0, 0.0, 1.0);
-            double aspectRatio = ((viewport.ActualHeight > 1.0) ? Math.Max(0.01, viewport.ActualWidth / viewport.ActualHeight) : 1.7777777777777777);
-            camera.FieldOfView = VerticalToHorizontalFov(cameraState.FieldOfView, aspectRatio);
-            camera.NearPlaneDistance = ((cameraState.NearPlane > 0f) ? ((double)cameraState.NearPlane) : Math.Max(0.001, _sceneRadius / 1000.0));
-            camera.FarPlaneDistance = (((double)cameraState.FarPlane > camera.NearPlaneDistance) ? ((double)cameraState.FarPlane) : Math.Max(1000.0, (((double?)_configuredCameraSettings?.Distance) ?? _sceneRadius) + _sceneRadius * 20.0));
-            UpdateWorldAxisIndicator();
-            if (_renderMode == 2)
-            {
-                WireframeLayer.RequestRender();
-            }
-        }
-    }
-
-    private void ApplyCompositeCamera(PerspectiveCamera camera, Viewport3D viewport, float time)
-    {
-        if ((object)_actionCamera != null && ActionCameraCatalog.IsActive(_actionCamera, time))
-        {
-            ApplyActionCamera(camera, viewport, time);
-        }
-        else if ((object)_configuredCameraSettings != null)
-        {
-            ApplyConfiguredCamera(camera, viewport, time);
-        }
-    }
-
-    private bool TrySampleConfiguredCamera(float time, out Point3D position, out Point3D target, out ConfiguredCameraCatalog.CameraState cameraState)
-    {
-        position = default(Point3D);
-        target = default(Point3D);
-        cameraState = new ConfiguredCameraCatalog.CameraState(default(Vector3), default(Vector3), 45f);
-        if ((object)_configuredCameraSettings == null || (object)_model == null)
-        {
-            return false;
-        }
-        Vector3D vector3D = SampleControllerRootMotion(time);
-        Point3D point3D = new Point3D(_sceneCenter.X + vector3D.X, _sceneCenter.Y + vector3D.Y, 0.0);
-        ConfiguredCameraCatalog.CameraState cameraState2 = ConfiguredCameraCatalog.SampleFollowCamera2(new ConfiguredCameraCatalog.FollowCameraInput(new Vector3((float)(0.0 - point3D.X), (float)point3D.Z, (float)point3D.Y), Vector3.UnitZ, _configuredCameraSettings.Distance, _configuredCameraSettings.HeightOffset, _configuredCameraSettings.RuntimeYawRadians.GetValueOrDefault(), _configuredCameraSettings.RuntimePitchRadians.GetValueOrDefault(), _configuredCameraSettings.FollowCameraNear, _configuredCameraSettings.FollowCameraFar, _configuredCameraSettings.FieldOfViewDegrees, _configuredCameraSettings.Confidence, _configuredCameraSettings.Evidence));
-        if ((object)_configuredCameraRuntime != null)
-        {
-            ConfiguredCameraCatalog.CameraState cameraState3 = ConfiguredCameraCatalog.Sample(new ConfiguredCameraCatalog.Clip(_animationAsset?.ResourceId ?? "", cameraState2, _configuredCameraRuntime.Events, _configuredCameraRuntime.Evidence), Math.Max(0f, time));
-            cameraState2 = cameraState2 with
-            {
-                FieldOfView = cameraState3.FieldOfView,
-                ShakeOffset = cameraState3.ShakeOffset,
-                ActiveEvent = (string.IsNullOrWhiteSpace(cameraState3.ActiveEvent) ? cameraState2.ActiveEvent : cameraState3.ActiveEvent)
-            };
-        }
-        position = ToWorld(cameraState2.Position.X, cameraState2.Position.Y, cameraState2.Position.Z);
-        target = ToWorld(cameraState2.LookAt.X, cameraState2.LookAt.Y, cameraState2.LookAt.Z);
-        cameraState = cameraState2;
-        return true;
-    }
-
-    private Vector3D SampleControllerRootMotion(float time)
-    {
-        if (_preparedPose == null || (object)_clip == null || (object)_model == null)
-        {
-            return default(Vector3D);
-        }
-        SkeletonBone skeletonBone = _model.Bones.FirstOrDefault((SkeletonBone x) => x.GlobalId == 1);
-        if ((object)skeletonBone == null || !_clip.Tracks.Any((AnimationTrack x) => x.GlobalBoneId == 1))
-        {
-            return default(Vector3D);
-        }
-        Matrix4x4[] worldMatrices = _preparedPose.Evaluate(0f).WorldMatrices;
-        Matrix4x4[] worldMatrices2 = _preparedPose.Evaluate(Math.Clamp(time, 0f, _clip.Info.Duration)).WorldMatrices;
-        int localId = skeletonBone.LocalId;
-        if ((uint)localId >= worldMatrices.Length || (uint)localId >= worldMatrices2.Length)
-        {
-            return default(Vector3D);
-        }
-        return new Vector3D(0.0, ConfiguredCameraCatalog.ExtractControllerTranslation(worldMatrices[localId].Translation, worldMatrices2[localId].Translation).Z, 0.0);
-    }
-
-    private void UpdateConfiguredCameraDataWindow(float time)
-    {
-        if (!TrySampleConfiguredCamera(time, out Point3D position, out Point3D target, out ConfiguredCameraCatalog.CameraState cameraState))
-        {
-            HideCameraDataWindow();
-            return;
-        }
-        double length = (target - position).Length;
-        double value = VerticalToHorizontalFov(cameraState.FieldOfView, CameraViewportAspect);
-        int value2 = (int)Math.Round(time * 60f);
-        CameraHudMode.Text = "配置镜头数据 · 本体参数基线";
-        _cameraDataWindow?.SetMode("配置镜头数据 · 本体参数基线");
-        string value3 = BuildCurrentActionCameraEvidenceSummary();
-        string text = $"帧 {value2} · {time:0.000}s / {_clip?.Info.Duration ?? 0f:0.000}s\n垂直 FOV {cameraState.FieldOfView:0.00}°\n水平 FOV {value:0.00}°\n距离 {length:0.00} cm\n机位 ({position.X:0.00}, {position.Y:0.00}, {position.Z:0.00})\n目标 ({target.X:0.00}, {target.Y:0.00}, {target.Z:0.00})\n当前事件：{cameraState.ActiveEvent}\n动作配置：{value3}\n" + "状态：当前只使用基础 FollowCamera2 + DefaultPlayer TargetFov；技能特效、命中反馈、震屏和战斗相机控制器尚未解码。";
-        CameraHudText.Text = text;
-        _cameraDataWindow?.ClearData();
-        _cameraDataWindow?.AddLine(text, "#D6DEE9", newline: false);
-    }
-
     private void EnsureCameraDataWindow()
     {
         if (_cameraDataWindow == null)
@@ -2274,10 +2192,6 @@ public partial class MainWindow : Window
             _cameraDataWindow.Closed += delegate
             {
                 _cameraDataWindow = null;
-                if (CameraDataCheck != null)
-                {
-                    CameraDataCheck.IsChecked = false;
-                }
             };
         }
         if (!_cameraDataWindow.IsVisible)
@@ -2364,15 +2278,11 @@ public partial class MainWindow : Window
         List<CameraCurvePoint> list = new List<CameraCurvePoint>(num2 + 1);
         Vector3? vector = null;
         Vector3? vector2 = null;
-        Point3D? point3D = null;
-        Point3D? point3D2 = null;
         for (int i = 0; i <= num2; i++)
         {
             double num3 = Math.Min(num, (double)i / 60.0);
             double? actionFov = null;
             double? actionDistance = null;
-            double? configuredFov = null;
-            double? configuredDistance = null;
             double? cameraSpeed = null;
             double? targetSpeed = null;
             if ((object)_actionCamera != null)
@@ -2389,42 +2299,21 @@ public partial class MainWindow : Window
                 vector = tuple.Item1;
                 vector2 = tuple.Item2;
             }
-            if ((object)_configuredCameraSettings != null && TrySampleConfiguredCamera((float)num3, out Point3D position, out Point3D target, out ConfiguredCameraCatalog.CameraState cameraState))
-            {
-                configuredFov = cameraState.FieldOfView;
-                configuredDistance = (target - position).Length;
-                if (!cameraSpeed.HasValue && point3D.HasValue)
-                {
-                    cameraSpeed = (position - point3D.Value).Length * 60.0;
-                    targetSpeed = (target - point3D2.Value).Length * 60.0;
-                }
-                point3D = position;
-                point3D2 = target;
-            }
-            list.Add(new CameraCurvePoint(num3, actionFov, actionDistance, configuredFov, configuredDistance, cameraSpeed, targetSpeed));
+            list.Add(new CameraCurvePoint(num3, actionFov, actionDistance, cameraSpeed, targetSpeed));
         }
         double[] keyTimes = (((object)_actionCamera == null) ? Array.Empty<double>() : (from x in ActionCameraCatalog.KeyframeTimes(_actionCamera).Select((Func<float, double>)((float x) => x)).Distinct()
                                                                                         orderby x
                                                                                         select x).ToArray());
         CameraCurveEvent[] events = BuildCameraCurveEvents().ToArray();
         string title = "镜头曲线 · " + (_animationAsset?.AnnotatedDisplayName ?? "当前动画");
-        string subtitle = (((object)_actionCamera == null) ? "无独立动画镜头；配置曲线仅显示当前已确认的基础 FollowCamera2 / TargetFov，未解码效果不生成假曲线。" : "动画曲线来自关联 G1A；配置曲线仅显示当前已确认的基础 FollowCamera2 / TargetFov。");
+        string subtitle = (object)_actionCamera == null
+            ? "该动作没有关联的独立动画镜头。"
+            : "镜头曲线来自关联的 Camera G1A。";
         return new CameraCurveSnapshot(title, subtitle, num, _playbackTime, list, events, keyTimes);
     }
 
     private IEnumerable<CameraCurveEvent> BuildCameraCurveEvents()
     {
-        if ((object)_configuredCameraRuntime != null)
-        {
-            foreach (ConfiguredCameraCatalog.ConfiguredCameraEvent @event in _configuredCameraRuntime.Events)
-            {
-                yield return new CameraCurveEvent(@event.StartTime, @event.Kind.ToString(), "配置事件", IsConfiguration: true);
-            }
-            foreach (ConfiguredCameraCatalog.ConfigurationTrack track in _configuredCameraRuntime.Tracks)
-            {
-                yield return new CameraCurveEvent(track.StartTime, track.Label, "配置轨道", IsConfiguration: true);
-            }
-        }
         string text = NormalizeResourceId(_animationAsset?.ResourceId ?? _animationAsset?.HashId ?? "");
         if (string.IsNullOrWhiteSpace(text) || !_authoredCameraEvents.TryGetValue(text, out ConfiguredCameraCatalog.AuthoredActionConfiguration value))
         {
@@ -2445,7 +2334,7 @@ public partial class MainWindow : Window
             IEnumerable<double> enumerable3 = enumerable2;
             foreach (double item2 in enumerable3)
             {
-                yield return new CameraCurveEvent(item2, $"{item.Kind} {item.ObjectHash:x8}", "动作表事件", IsConfiguration: false);
+                yield return new CameraCurveEvent(item2, $"{item.Kind} {item.ObjectHash:x8}", "动作表事件");
             }
         }
     }
@@ -2632,6 +2521,7 @@ public partial class MainWindow : Window
         {
             _weaponModel = await Task.Run(() => G1Parsers.ReadModel(asset.FullPath));
             _weaponAsset = asset;
+            await LoadPairedWeaponAsync(asset);
             PopulateAccessoryBoneChoices();
             ResolveAccessoryAttachment();
             WeaponCheck.IsEnabled = true;
@@ -2649,6 +2539,53 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task LoadPairedWeaponAsync(AssetEntry asset)
+    {
+        _secondaryWeaponModel = null;
+        _secondaryWeaponAsset = null;
+        _secondaryWeaponAttachment = null;
+        string? pairedOwner = PairedWeaponOwner(asset.OwnerName ?? "");
+        if (pairedOwner == null)
+        {
+            // 孙尚香的 HW0004 飞圈与貂蝉的 HW0011 绳镖没有拆成
+            // _L/_R 文件；游戏在两个装备槽中复用同一模型。
+            bool sharedDualModel = asset.OwnerName?.StartsWith("HW0004_", StringComparison.OrdinalIgnoreCase) == true ||
+                                   asset.OwnerName?.StartsWith("HW0011_", StringComparison.OrdinalIgnoreCase) == true;
+            if (!sharedDualModel) return;
+            _secondaryWeaponModel = _weaponModel;
+            _secondaryWeaponAsset = asset;
+            _secondaryWeaponAttachment = ModelAttachmentComposer.Resolve(_secondaryWeaponModel!, 103);
+            return;
+        }
+        AssetEntry? pair = _all.FirstOrDefault(x => x.Kind == AssetKind.Model &&
+            string.Equals(x.OwnerName, pairedOwner, StringComparison.OrdinalIgnoreCase));
+        if (pair == null) return;
+        _secondaryWeaponModel = await Task.Run(() => G1Parsers.ReadModel(pair.FullPath));
+        _secondaryWeaponAsset = pair;
+        ResolveSecondaryWeaponAttachment();
+    }
+
+    private static string? PairedWeaponOwner(string owner)
+    {
+        int marker = owner.IndexOf("_L", StringComparison.OrdinalIgnoreCase);
+        if (marker >= 0) return owner[..marker] + "_R" + owner[(marker + 2)..];
+        marker = owner.IndexOf("_R", StringComparison.OrdinalIgnoreCase);
+        return marker >= 0 ? owner[..marker] + "_L" + owner[(marker + 2)..] : null;
+    }
+
+    private void ResolveSecondaryWeaponAttachment()
+    {
+        if ((object)_secondaryWeaponModel == null || _secondaryWeaponAsset == null) return;
+        string owner = _secondaryWeaponAsset.OwnerName ?? "";
+        // Some paired weapons (flying rings / rope darts) reuse one model for both hands
+        // and therefore have no _L/_R suffix.  Do not resolve those back onto the
+        // primary socket: that makes both copies overlap and look like a single weapon.
+        int targetBone = WeaponTargetBone(owner, secondarySharedCopy: true);
+        // L/R 文件的骨架布局并不保证装备根固定为 local bone 1。
+        // 按实际蒙皮引用求公共祖先，才能正确处理黄盖手甲等多骨骼模型。
+        _secondaryWeaponAttachment = ModelAttachmentComposer.Resolve(_secondaryWeaponModel, targetBone);
+    }
+
     private async void AddSelectedAccessory_Click(object sender, RoutedEventArgs e)
     {
         AssetEntry asset = _selected;
@@ -2661,6 +2598,7 @@ public partial class MainWindow : Window
         {
             _weaponModel = await Task.Run(() => G1Parsers.ReadModel(asset.FullPath));
             _weaponAsset = asset;
+            await LoadPairedWeaponAsync(asset);
             PopulateAccessoryBoneChoices();
             ResolveAccessoryAttachment();
             WeaponCheck.IsEnabled = true;
@@ -2688,9 +2626,15 @@ public partial class MainWindow : Window
         _weaponModel = null;
         _weaponAsset = null;
         _weaponAttachment = null;
+        _secondaryWeaponModel = null;
+        _secondaryWeaponAsset = null;
+        _secondaryWeaponAttachment = null;
         _weaponGeometries.Clear();
+        _secondaryWeaponGeometries.Clear();
         _weaponGroup.Children.Clear();
         _comparisonWeaponGroup.Children.Clear();
+        _secondaryWeaponGroup.Children.Clear();
+        _comparisonSecondaryWeaponGroup.Children.Clear();
         WeaponCheck.IsEnabled = false;
         WeaponCheck.IsChecked = false;
         AccessorySourceBoneCombo.ItemsSource = null;
@@ -2712,9 +2656,10 @@ public partial class MainWindow : Window
             AccessoryTargetBoneCombo.ItemsSource = array2;
             AccessorySourceBoneCombo.IsEnabled = array.Length != 0;
             AccessoryTargetBoneCombo.IsEnabled = array2.Length != 0;
-            ModelAttachmentComposer.Attachment automatic = ModelAttachmentComposer.Resolve(_weaponModel, 104);
+            int primaryTarget = WeaponTargetBone(_weaponAsset?.OwnerName, secondarySharedCopy: false);
+            ModelAttachmentComposer.Attachment automatic = ModelAttachmentComposer.Resolve(_weaponModel, primaryTarget);
             AccessorySourceBoneCombo.SelectedItem = array.FirstOrDefault((BoneChoice x) => x.LocalId == automatic.SourceLocalBoneId) ?? array.FirstOrDefault();
-            AccessoryTargetBoneCombo.SelectedItem = array2.FirstOrDefault((BoneChoice x) => x.GlobalId == 104) ?? array2.FirstOrDefault();
+            AccessoryTargetBoneCombo.SelectedItem = array2.FirstOrDefault((BoneChoice x) => x.GlobalId == primaryTarget) ?? array2.FirstOrDefault();
             _updatingAccessoryEditor = false;
         }
     }
@@ -2724,6 +2669,7 @@ public partial class MainWindow : Window
         if ((object)_weaponModel != null && AccessorySourceBoneCombo.SelectedItem is BoneChoice boneChoice && AccessoryTargetBoneCombo.SelectedItem is BoneChoice boneChoice2)
         {
             _weaponAttachment = ModelAttachmentComposer.Resolve(_weaponModel, boneChoice.LocalId, boneChoice2.GlobalId);
+            ResolveSecondaryWeaponAttachment();
             AccessoryMappingText.Text = $"独立配件 bone_{boneChoice.GlobalId} → 人物 bone_{boneChoice2.GlobalId}";
         }
     }
@@ -2775,9 +2721,14 @@ public partial class MainWindow : Window
     {
         _weaponGroup.Children.Clear();
         _comparisonWeaponGroup.Children.Clear();
+        _secondaryWeaponGroup.Children.Clear();
+        _comparisonSecondaryWeaponGroup.Children.Clear();
         _weaponGeometries.Clear();
+        _secondaryWeaponGeometries.Clear();
         _weaponGroup.Transform = Transform3D.Identity;
         _comparisonWeaponGroup.Transform = Transform3D.Identity;
+        _secondaryWeaponGroup.Transform = Transform3D.Identity;
+        _comparisonSecondaryWeaponGroup.Transform = Transform3D.Identity;
         if (WeaponCheck.IsChecked != true || (object)_weaponModel == null)
         {
             return;
@@ -2803,6 +2754,19 @@ public partial class MainWindow : Window
                 BackMaterial = materialGroup
             });
         }
+        if ((object)_secondaryWeaponModel != null)
+        {
+            foreach (MeshPart part in _secondaryWeaponModel.Parts)
+            {
+                MeshGeometry3D mesh = new MeshGeometry3D();
+                for (int i = 0; i + 2 < part.Positions.Length; i += 3)
+                    mesh.Positions.Add(ToWorld(part.Positions[i], part.Positions[i + 1], part.Positions[i + 2]));
+                AppendTriangles(mesh.TriangleIndices, part.Indices, part.TriangleStrip, mesh.Positions.Count);
+                _secondaryWeaponGeometries.Add(mesh);
+                _secondaryWeaponGroup.Children.Add(new GeometryModel3D(mesh, materialGroup) { BackMaterial = materialGroup });
+                _comparisonSecondaryWeaponGroup.Children.Add(new GeometryModel3D(mesh, materialGroup) { BackMaterial = materialGroup });
+            }
+        }
     }
 
     private void UpdateWeaponPreview(IReadOnlyList<Matrix4x4> poseWorld)
@@ -2816,14 +2780,44 @@ public partial class MainWindow : Window
             SkeletonBone skeletonBone = _model.Bones.FirstOrDefault((SkeletonBone bone) => bone.GlobalId == _weaponAttachment.TargetGlobalBoneId);
             if ((object)skeletonBone != null && skeletonBone.LocalId >= 0 && skeletonBone.LocalId < poseWorld.Count)
             {
-                Matrix4x4 matrix4x = ModelAttachmentComposer.Compose(_weaponAttachment, _accessoryAdjustment, poseWorld[skeletonBone.LocalId]);
+                Matrix4x4 matrix4x = ModelAttachmentComposer.Compose(_weaponAttachment,
+                    _accessoryAdjustment, poseWorld[skeletonBone.LocalId]);
                 Matrix4x4 matrix4x2 = new Matrix4x4(-1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f);
                 Matrix4x4 matrix4x3 = matrix4x2 * matrix4x * matrix4x2;
                 Matrix3D matrix = new Matrix3D(matrix4x3.M11, matrix4x3.M12, matrix4x3.M13, matrix4x3.M14, matrix4x3.M21, matrix4x3.M22, matrix4x3.M23, matrix4x3.M24, matrix4x3.M31, matrix4x3.M32, matrix4x3.M33, matrix4x3.M34, matrix4x3.M41, matrix4x3.M42, matrix4x3.M43, matrix4x3.M44);
                 _weaponGroup.Transform = new MatrixTransform3D(matrix);
                 _comparisonWeaponGroup.Transform = new MatrixTransform3D(matrix);
             }
+            UpdateSecondaryWeaponPreview(poseWorld);
         }
+    }
+
+    private static int WeaponTargetBone(string? ownerName, bool secondarySharedCopy)
+    {
+        string owner = ownerName ?? "";
+        bool right = owner.Contains("_R", StringComparison.OrdinalIgnoreCase);
+        // Shared dual models have no side suffix: primary uses the left equipment slot,
+        // and the generated second copy uses the right equipment slot.
+        if (owner.StartsWith("HW0004_", StringComparison.OrdinalIgnoreCase) ||
+            owner.StartsWith("HW0011_", StringComparison.OrdinalIgnoreCase))
+            return secondarySharedCopy ? 103 : 104;
+        return right ? 103 : 104;
+    }
+
+    private void UpdateSecondaryWeaponPreview(IReadOnlyList<Matrix4x4> poseWorld)
+    {
+        if ((object)_secondaryWeaponModel == null || (object)_secondaryWeaponAttachment == null || (object)_model == null)
+            return;
+        SkeletonBone? target = _model.Bones.FirstOrDefault(bone => bone.GlobalId == _secondaryWeaponAttachment.TargetGlobalBoneId);
+        if (target == null || target.LocalId < 0 || target.LocalId >= poseWorld.Count) return;
+        Matrix4x4 composed = ModelAttachmentComposer.Compose(_secondaryWeaponAttachment,
+            _accessoryAdjustment, poseWorld[target.LocalId]);
+        Matrix4x4 basis = new(-1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f);
+        Matrix4x4 world = basis * composed * basis;
+        Matrix3D matrix = new(world.M11, world.M12, world.M13, world.M14, world.M21, world.M22, world.M23, world.M24,
+            world.M31, world.M32, world.M33, world.M34, world.M41, world.M42, world.M43, world.M44);
+        _secondaryWeaponGroup.Transform = new MatrixTransform3D(matrix);
+        _comparisonSecondaryWeaponGroup.Transform = new MatrixTransform3D(matrix);
     }
 
     private void UpdateWeaponToCurrentPose()
@@ -2925,16 +2919,6 @@ public partial class MainWindow : Window
             ApplyActionCamera((float)_playbackTime);
             return;
         }
-        if (CameraModeCombo.SelectedIndex == 2 && (object)_configuredCameraSettings != null)
-        {
-            ApplyConfiguredCamera((float)_playbackTime);
-            return;
-        }
-        if (CameraModeCombo.SelectedIndex == 3)
-        {
-            ApplyCompositeCamera(ViewportCamera, Viewport, (float)_playbackTime);
-            return;
-        }
         ViewportCamera.FieldOfView = 42.0;
         double num = _sceneRadius * 3.15 / _zoom;
         Vector3D vector3D = new Vector3D(Math.Cos(_pitch) * Math.Sin(_yaw), Math.Cos(_pitch) * Math.Cos(_yaw), Math.Sin(_pitch));
@@ -2960,16 +2944,6 @@ public partial class MainWindow : Window
             if (ComparisonCameraModeCombo.SelectedIndex == 1 && (object)_actionCamera != null)
             {
                 ApplyActionCamera(ComparisonCamera, ComparisonViewport, time);
-                return;
-            }
-            if (ComparisonCameraModeCombo.SelectedIndex == 2 && (object)_configuredCameraSettings != null)
-            {
-                ApplyConfiguredCamera(ComparisonCamera, ComparisonViewport, time);
-                return;
-            }
-            if (ComparisonCameraModeCombo.SelectedIndex == 3)
-            {
-                ApplyCompositeCamera(ComparisonCamera, ComparisonViewport, time);
                 return;
             }
             ComparisonCamera.FieldOfView = 42.0;
@@ -3435,11 +3409,6 @@ public partial class MainWindow : Window
             RenderAnimatedSkeleton((float)_playbackTime);
             ViewportHint.Text = "动画镜头 · 与人物动作按相同时间同步";
         }
-        else if (CameraModeCombo.SelectedIndex == 2 && (object)_configuredCameraSettings != null)
-        {
-            RenderAnimatedSkeleton((float)_playbackTime);
-            ViewportHint.Text = "配置镜头 · 基础战斗跟随镜头 + 已确认 TargetFov";
-        }
         else
         {
             UpdateCamera();
@@ -3455,28 +3424,29 @@ public partial class MainWindow : Window
 
     private void UpdateCameraModeAvailability(bool hasActionCamera, bool hasConfiguredCamera)
     {
-        bool flag = hasActionCamera || hasConfiguredCamera;
-        LinkedCameraModeItem.Visibility = ((!hasActionCamera) ? Visibility.Collapsed : Visibility.Visible);
+        LinkedCameraModeItem.Visibility = Visibility.Visible;
         LinkedCameraModeItem.IsEnabled = hasActionCamera;
-        ComparisonActionCameraModeItem.Visibility = ((!hasActionCamera) ? Visibility.Collapsed : Visibility.Visible);
+        LinkedCameraModeItem.ToolTip = hasActionCamera ? "播放动作关联的 Camera G1A" : "当前动作没有关联动画镜头";
+        ComparisonActionCameraModeItem.Visibility = Visibility.Visible;
         ComparisonActionCameraModeItem.IsEnabled = hasActionCamera;
-        ConfiguredCameraModeItem.Visibility = ((!hasConfiguredCamera) ? Visibility.Collapsed : Visibility.Visible);
-        ConfiguredCameraModeItem.IsEnabled = hasConfiguredCamera;
-        ComparisonConfiguredCameraModeItem.Visibility = ((!hasConfiguredCamera) ? Visibility.Collapsed : Visibility.Visible);
-        ComparisonConfiguredCameraModeItem.IsEnabled = hasConfiguredCamera;
-        CompositeCameraModeItem.Visibility = ((!flag) ? Visibility.Collapsed : Visibility.Visible);
-        CompositeCameraModeItem.IsEnabled = flag;
-        ComparisonCompositeCameraModeItem.Visibility = ((!flag) ? Visibility.Collapsed : Visibility.Visible);
-        ComparisonCompositeCameraModeItem.IsEnabled = flag;
-        CameraModeCombo.IsEnabled = hasActionCamera || hasConfiguredCamera;
-        ComparisonCameraModeCombo.IsEnabled = CameraModeCombo.IsEnabled;
+        ComparisonActionCameraModeItem.ToolTip = LinkedCameraModeItem.ToolTip;
+        ConfiguredCameraModeItem.Visibility = Visibility.Collapsed;
+        ConfiguredCameraModeItem.IsEnabled = false;
+        ComparisonConfiguredCameraModeItem.Visibility = Visibility.Collapsed;
+        ComparisonConfiguredCameraModeItem.IsEnabled = false;
+        CompositeCameraModeItem.Visibility = Visibility.Collapsed;
+        CompositeCameraModeItem.IsEnabled = false;
+        ComparisonCompositeCameraModeItem.Visibility = Visibility.Collapsed;
+        ComparisonCompositeCameraModeItem.IsEnabled = false;
+        CameraModeCombo.IsEnabled = true;
+        ComparisonCameraModeCombo.IsEnabled = true;
         int selectedIndex = CameraModeCombo.SelectedIndex;
-        if ((selectedIndex == 1 && !hasActionCamera) || (selectedIndex == 2 && !hasConfiguredCamera) || (selectedIndex == 3 && !flag))
+        if (selectedIndex != 0 && (selectedIndex != 1 || !hasActionCamera))
         {
             CameraModeCombo.SelectedIndex = 0;
         }
         int selectedIndex2 = ComparisonCameraModeCombo.SelectedIndex;
-        if ((selectedIndex2 == 1 && !hasActionCamera) || (selectedIndex2 == 2 && !hasConfiguredCamera) || (selectedIndex2 == 3 && !flag))
+        if (selectedIndex2 != 0 && (selectedIndex2 != 1 || !hasActionCamera))
         {
             ComparisonCameraModeCombo.SelectedIndex = 0;
         }
@@ -3496,8 +3466,11 @@ public partial class MainWindow : Window
         if (valueOrDefault)
         {
             _comparisonCameraTarget = (((object)_model == null) ? _cameraTarget : _sceneCenter);
-            ComparisonCameraModeCombo.IsEnabled = CameraModeCombo.IsEnabled;
-            ComparisonCameraModeCombo.SelectedIndex = CameraModeCombo.SelectedIndex;
+            // 双视口用于直接对照：左侧优先播放动作关联的动画镜头，
+            // 右侧保持可操作的自由镜头。没有 Camera G1A 时左侧回退自由镜头。
+            CameraModeCombo.SelectedIndex = (object)_actionCamera != null ? 1 : 0;
+            ComparisonCameraModeCombo.IsEnabled = true;
+            ComparisonCameraModeCombo.SelectedIndex = 0;
             ComparisonViewportHint.Text = BuildViewportModeHint(ComparisonCameraModeCombo.SelectedIndex, right: true);
             UpdateComparisonCamera();
         }
@@ -3512,8 +3485,6 @@ public partial class MainWindow : Window
         return mode switch
         {
             1 => text + "动画镜头",
-            2 => text + "配置镜头",
-            3 => text + "最终合成",
             _ => text + "自由镜头 · Alt+左键旋转 · Alt+中键平移 · Alt+右键推拉 · F 聚焦",
         };
     }
@@ -3528,8 +3499,13 @@ public partial class MainWindow : Window
         UpdateCameraTrajectory();
     }
 
-    private void CameraData_Changed(object s, RoutedEventArgs e)
+    private void CameraData_Click(object s, RoutedEventArgs e)
     {
+        if ((object)_actionCamera == null)
+        {
+            return;
+        }
+        EnsureCameraDataWindow();
         UpdateRealtimeCameraData((float)_playbackTime);
     }
 
@@ -4213,6 +4189,14 @@ public partial class MainWindow : Window
     private async Task UnpackPackagesAsync(IReadOnlyList<AssetEntry> packages, string destination)
     {
         base.IsEnabled = false;
+        UpdateProgressPanelPlacement();
+        ExportProgressPanel.Visibility = Visibility.Visible;
+        ExportProgressBar.IsIndeterminate = true;
+        ExportProgressBar.Value = 0.0;
+        ExportProgressBar.Opacity = 1.0;
+        ExportProgressPercentText.Text = "准备中";
+        ExportProgressText.Text = "正在准备加载 PAK 资源";
+        ExportProgressDetailText.Text = $"共 {packages.Count:N0} 个 FData 包";
         try
         {
             string expanded = System.IO.Path.Combine(_root, "File", "ASSET", "FDataPackage", "Dev", "fdata_out");
@@ -4236,6 +4220,13 @@ public partial class MainWindow : Window
                 int packageIndex = p;
                 Progress<(int, int, string)> progress = new Progress<(int, int, string)>(delegate ((int Done, int Total, string Name) x)
                 {
+                    double packageFraction = x.Total > 0 ? Math.Clamp((double)x.Done / x.Total, 0.0, 1.0) : 0.0;
+                    double overallPercent = (packageIndex + packageFraction) / packages.Count * 100.0;
+                    ExportProgressBar.IsIndeterminate = x.Total <= 0;
+                    ExportProgressBar.Value = overallPercent;
+                    ExportProgressPercentText.Text = $"{overallPercent:0.0}%";
+                    ExportProgressText.Text = $"正在加载 PAK · {packageIndex + 1}/{packages.Count}";
+                    ExportProgressDetailText.Text = $"记录 {x.Done:N0}/{x.Total:N0} · {x.Name}";
                     StatusText.Text = $"包 {packageIndex + 1}/{packages.Count} · 记录 {x.Done}/{x.Total} · {x.Name}";
                 });
                 FDataExtractResult fDataExtractResult = await FDataUnpacker.ExtractAsync(assetEntry.FullPath, destination, known, progress, default(CancellationToken), outputNames, knownPaths);
@@ -4243,6 +4234,11 @@ public partial class MainWindow : Window
                 files += fDataExtractResult.ExtractedCount;
                 errors += fDataExtractResult.Errors.Count;
             }
+            ExportProgressBar.IsIndeterminate = false;
+            ExportProgressBar.Value = 100.0;
+            ExportProgressPercentText.Text = "100%";
+            ExportProgressText.Text = "PAK 资源加载完成";
+            ExportProgressDetailText.Text = $"{files:N0} 个资源 · {(double)bytes / 1073741824.0:0.00} GB · {errors:N0} 个错误";
             StatusText.Text = $"解包完成：{files:N0} 个资源，{(double)bytes / 1073741824.0:0.00} GB，{errors:N0} 个错误";
             MessageBox.Show(this, $"解包完成。\n资源：{files:N0}\n数据量：{(double)bytes / 1048576.0:0.00} MB\n错误：{errors:N0}\n\n每个包均已生成 manifest.json。", "FData 解包");
         }
@@ -4254,6 +4250,7 @@ public partial class MainWindow : Window
         finally
         {
             base.IsEnabled = true;
+            SetProgressIdle(StatusText.Text);
         }
     }
 
@@ -4393,8 +4390,8 @@ public partial class MainWindow : Window
 			CameraTrajectoryCheck.Click += CameraTrajectory_Changed;
 			break;
 		case 25:
-			CameraDataCheck = (CheckBox)target;
-			CameraDataCheck.Click += CameraData_Changed;
+			CameraDataButton = (Button)target;
+			CameraDataButton.Click += CameraData_Click;
 			break;
 		case 26:
 			WeaponCheck = (CheckBox)target;
