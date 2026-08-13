@@ -129,7 +129,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Border Style="{StaticResource CardStyle}" Background="#131A24" Padding="9" Margin="0,0,0,8">
           <StackPanel>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="112"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="124"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="112"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="124"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="142"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBlock Text="视图" VerticalAlignment="Center" Margin="2,0,6,0"/>
               <ComboBox x:Name="ViewCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="ViewportView_Changed">
                 <ComboBoxItem Content="透视"/><ComboBoxItem Content="前"/><ComboBoxItem Content="后"/><ComboBoxItem Content="左"/><ComboBoxItem Content="右"/><ComboBoxItem Content="顶"/><ComboBoxItem Content="底"/>
@@ -138,14 +138,18 @@
               <ComboBox x:Name="RenderModeCombo" Grid.Column="3" SelectedIndex="1" SelectionChanged="RenderMode_Changed">
                 <ComboBoxItem Content="材质"/><ComboBoxItem Content="实体"/><ComboBoxItem Content="线框"/>
               </ComboBox>
-              <Border Grid.Column="5" Background="#101D29" BorderBrush="#36536A" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
+              <TextBlock Grid.Column="4" Text="操作方式" VerticalAlignment="Center" Margin="12,0,6,0"/>
+              <ComboBox x:Name="ViewportControlCombo" Grid.Column="5" SelectedIndex="0" SelectionChanged="ViewportControl_Changed" ToolTip="选择自由镜头的鼠标操作方式">
+                <ComboBoxItem Content="UE 动画编辑器"/><ComboBoxItem Content="默认编辑器"/>
+              </ComboBox>
+              <Border Grid.Column="7" Background="#101D29" BorderBrush="#36536A" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="12,0,0,0" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="镜头工具" Foreground="#83CFF4" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,7,0"/>
                   <Button x:Name="CameraCurveButton" Content="镜头曲线" Click="CameraCurve_Click" IsEnabled="False" Padding="11,5" Margin="0" ToolTip="打开镜头参数曲线、原始 K 帧和动作事件标记"/>
                   <Button x:Name="CameraDataButton" Content="镜头数据" Click="CameraData_Click" IsEnabled="False" Padding="11,5" Margin="10,0,1,0" VerticalAlignment="Center" ToolTip="打开实时镜头数据浮窗"/>
                 </StackPanel>
               </Border>
-              <Border Grid.Column="6" Background="#112332" BorderBrush="#24465D" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,2,0" VerticalAlignment="Center"><TextBlock x:Name="ViewportStats" Text="G1M VIEWPORT" Foreground="#83CFF4" FontSize="10" FontWeight="SemiBold"/></Border>
+              <Border Grid.Column="8" Background="#112332" BorderBrush="#24465D" BorderThickness="1" CornerRadius="10" Padding="9,3" Margin="10,0,2,0" VerticalAlignment="Center"><TextBlock x:Name="ViewportStats" Text="G1M VIEWPORT" Foreground="#83CFF4" FontSize="10" FontWeight="SemiBold"/></Border>
             </Grid>
             <WrapPanel Orientation="Horizontal" Margin="2,7,0,0">
               <CheckBox x:Name="DualViewportCheck" Content="双视口" Click="DualViewport_Changed" Margin="0,0,18,0" FontWeight="SemiBold" Foreground="#83CFF4" ToolTip="按需开启左右双视口；两边独立选择镜头模式并同步同一帧"/>
@@ -188,7 +192,7 @@
             </Viewport3D>
             <local:WireframeOverlay x:Name="WireframeLayer" IsHitTestVisible="False" Visibility="Collapsed"/>
             <Canvas x:Name="ViewportOverlay" Background="Transparent" IsHitTestVisible="False"/>
-            <!-- 与 RE 工具一致：透明输入层覆盖整个 3D 视口，空白处也能捕获拖动和滚轮。 -->
+            <!-- 透明输入层覆盖整个 3D 视口，空白处也能捕获拖动和滚轮。 -->
             <Border x:Name="ViewportInput" Background="#01000000" Focusable="True" Cursor="Arrow"
                     MouseWheel="Viewport_MouseWheel" MouseMove="Viewport_MouseMove"
                     MouseDown="Viewport_MouseDown" MouseUp="Viewport_MouseUp" KeyDown="ViewportInput_KeyDown"/>

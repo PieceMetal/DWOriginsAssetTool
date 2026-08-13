@@ -1844,7 +1844,7 @@ public partial class MainWindow : Window
         UpdateCamera();
         UpdateComparisonCamera();
         ViewportStats.Text = $"{_model.Parts.Count} parts · {_model.SubmeshCount} submeshes · {_model.Bones.Count} bones · GPU 3D";
-        ViewportHint.Text = "左键旋转 · 右键平移 · 中键平移 · Alt+中键旋转 · 滚轮缩放 · 持久化 3D 网格";
+        ViewportHint.Text = BuildViewportModeHint(CameraModeCombo.SelectedIndex, right: false);
     }
 
     private static IReadOnlyList<WireframeEdge> BuildWireframeEdges(IReadOnlyList<MeshGeometry3D> meshes, int edgeBudget)
@@ -3485,8 +3485,32 @@ public partial class MainWindow : Window
         return mode switch
         {
             1 => text + "动画镜头",
-            _ => text + "自由镜头 · Alt+左键旋转 · Alt+中键平移 · Alt+右键推拉 · F 聚焦",
+            _ when ViewportControlCombo.SelectedIndex == 1 => text + "自由镜头 · 左键旋转 · 右键/中键平移 · 滚轮缩放 · F 聚焦",
+            _ => text + "自由镜头 · Alt+左键旋转 · Alt+中键平移 · Alt+右键推拉 · 滚轮缩放 · F 聚焦",
         };
+    }
+
+    private void ViewportControl_Changed(object s, SelectionChangedEventArgs e)
+    {
+        if (!base.IsLoaded)
+        {
+            return;
+        }
+        _dragging = false;
+        _orbiting = false;
+        _panning = false;
+        _dollying = false;
+        if (ViewportInput.IsMouseCaptured)
+        {
+            ViewportInput.ReleaseMouseCapture();
+        }
+        if (ComparisonViewportInput.IsMouseCaptured)
+        {
+            ComparisonViewportInput.ReleaseMouseCapture();
+        }
+        ViewportHint.Text = BuildViewportModeHint(CameraModeCombo.SelectedIndex, right: false);
+        ComparisonViewportHint.Text = BuildViewportModeHint(ComparisonCameraModeCombo.SelectedIndex, right: true);
+        ViewportInput.Focus();
     }
 
     private void CameraGizmo_Changed(object s, RoutedEventArgs e)
@@ -3599,9 +3623,10 @@ public partial class MainWindow : Window
         if ((flag ? ComparisonCameraModeCombo.SelectedIndex : CameraModeCombo.SelectedIndex) == 0)
         {
             bool flag2 = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
-            _orbiting = flag2 && e.ChangedButton == MouseButton.Left;
-            _panning = flag2 && e.ChangedButton == MouseButton.Middle;
-            _dollying = flag2 && e.ChangedButton == MouseButton.Right;
+            bool flag3 = ViewportControlCombo.SelectedIndex == 1;
+            _orbiting = flag3 ? e.ChangedButton == MouseButton.Left : flag2 && e.ChangedButton == MouseButton.Left;
+            _panning = flag3 ? e.ChangedButton == MouseButton.Right || e.ChangedButton == MouseButton.Middle : flag2 && e.ChangedButton == MouseButton.Middle;
+            _dollying = !flag3 && flag2 && e.ChangedButton == MouseButton.Right;
             if (_orbiting || _panning || _dollying)
             {
                 Border border = (flag ? ComparisonViewportInput : ViewportInput);
