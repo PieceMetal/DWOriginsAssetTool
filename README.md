@@ -4,7 +4,7 @@
 
 项目定位是研究、预览和导出。它不包含游戏本体、解包资源或导出资源，也不提供游戏资源传播服务。
 
-## [⬇ 下载最新版（Windows x64 单 EXE）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest/download/DWOriginsAssetTool.exe)
+## [⬇ 获取最新构建包（Windows x64 单 EXE）](https://github.com/PieceMetal/DWOriginsAssetTool/releases/latest)
 
 ## 安装
 
@@ -13,7 +13,7 @@
 3. 首次启动时，在左侧选择同时包含 `DWORIGINS.exe` 和 `File` 文件夹的游戏根目录，然后点击“初始化游戏资源”。
 4. 模型、动画和镜头 FBX 导出需要安装 [Blender](https://store.steampowered.com/app/365670/Blender/)；工具会自动检测 Steam 版，也可以手动选择 `blender.exe`。
 
-当前版本：`v1.2.0`
+当前版本：`v1.2.1`
 
 ## v1.2.0 更新
 
