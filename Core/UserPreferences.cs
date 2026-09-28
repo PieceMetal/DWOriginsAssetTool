@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace DWOriginsAssetTool.Core;
 
@@ -6,6 +6,11 @@ internal static class UserPreferences
 {
     private sealed class PreferenceData
     {
+        public string PreviewBackground { get; set; } = "#182030";
+        public string PreviewLineColor { get; set; } = "#C8AE72";
+        public string PreviewCameraColor { get; set; } = "#DCE5ED";
+        public string PreviewTargetColor { get; set; } = "#8296AC";
+        public double PreviewLineScale { get; set; } = 2;
         public bool HideStartupGuide { get; set; }
         public string BlenderPath { get; set; } = "";
     }
@@ -40,6 +45,23 @@ internal static class UserPreferences
     {
         var data = Read();
         data.BlenderPath = value;
+        Write(data);
+    }
+
+    public static (string Background, string LineColor, double LineScale, string CameraColor, string TargetColor) GetPreviewAppearance()
+    {
+        var data = Read();
+        return (data.PreviewBackground, data.PreviewLineColor, data.PreviewLineScale, data.PreviewCameraColor, data.PreviewTargetColor);
+    }
+
+    public static void SetPreviewAppearance(string background, string lineColor, double lineScale, string cameraColor, string targetColor)
+    {
+        var data = Read();
+        data.PreviewBackground = background;
+        data.PreviewLineColor = lineColor;
+        data.PreviewLineScale = lineScale;
+        data.PreviewCameraColor = cameraColor;
+        data.PreviewTargetColor = targetColor;
         Write(data);
     }
 

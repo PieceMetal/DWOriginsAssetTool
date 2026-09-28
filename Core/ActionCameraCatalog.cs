@@ -255,7 +255,7 @@ public static class ActionCameraCatalog
         // off the actor's head (for example 0.258 is 28.9°, not 14.8°).
         var fovDegrees = 2f * MathF.Atan(MathF.Abs(lensParameters.Y)) * 180f / MathF.PI;
         var fieldOfView = float.IsFinite(fovDegrees) && fovDegrees is >= 10f and <= 150f ? fovDegrees : 42f;
-        return new(time, cameraPosition, forward, up, fieldOfView);
+        return new(time, cameraPosition, forward, up, fieldOfView) { Target = target };
     }
 
     public static bool IsActive(ActionCameraClip camera, float actionTime)
@@ -318,4 +318,7 @@ public static class ActionCameraCatalog
 }
 
 public sealed record ActionCameraClip(ActionCameraCatalog.Binding Binding, G1AClip Clip, AnimationTrack TransformTrack);
-public sealed record ActionCameraFrame(float Time, Vector3 Position, Vector3 Forward, Vector3 Up, float FieldOfView);
+public sealed record ActionCameraFrame(float Time, Vector3 Position, Vector3 Forward, Vector3 Up, float FieldOfView)
+{
+    public Vector3 Target { get; init; }
+}

@@ -295,6 +295,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializePreviewAppearance();
         base.Dispatcher.UnhandledException += MainWindow_DispatcherUnhandledException;
         Viewport.Children.Add(new ModelVisual3D
         {
@@ -707,7 +708,7 @@ public partial class MainWindow : Window
         }
         foreach (IGrouping<string, AssetEntry> item2 in from x in _all.Where(delegate (AssetEntry x)
             {
-                if (x.Kind == AssetKind.Model)
+                if (x.Kind == AssetKind.Model && x.Size > 0)
                 {
                     string ownerName2 = x.OwnerName;
                     if (ownerName2 != null && ownerName2.Length > 0)
@@ -1759,6 +1760,7 @@ public partial class MainWindow : Window
         AddWorldBackground(_comparisonBackgroundScene);
         _scene.Children.Add(_backgroundScene);
         _comparisonScene.Children.Add(_comparisonBackgroundScene);
+        // Camera helpers share the model depth buffer: occlusion follows world position.
         _helperScene.Children.Add(_cameraGizmo);
         _helperScene.Children.Add(_cameraTrajectory);
         _helperScene.Children.Add(_cameraTrajectoryCursor);
@@ -2379,22 +2381,29 @@ public partial class MainWindow : Window
                 point3D2 - vector * num2 + vector3D2 * num3,
                 point3D2 - vector * num2 - vector3D2 * num3
             };
-            DiffuseMaterial material = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(76, 208, 238)));
-            DiffuseMaterial material2 = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(241, 190, 72)));
-            double num4 = Math.Max(_sceneRadius * 0.003, 0.025);
+            Material material = HelperMaterial(_previewCameraColor);
+            Material material2 = HelperMaterial(_previewTargetColor);
+            double num4 = Math.Clamp(_previewLineScale, 1.4, 3);
             Point3D[] array2 = array;
             foreach (Point3D end in array2)
             {
-                AddLine3D(target, point3D, end, num4, material);
+                AddHelperLine(viewport, target, point3D, end, num4, material);
             }
             for (int j = 0; j < array.Length; j++)
             {
-                AddLine3D(target, array[j], array[(j + 1) % array.Length], num4, material);
+                AddHelperLine(viewport, target, array[j], array[(j + 1) % array.Length], num4, material);
             }
             double num5 = Math.Max(_sceneRadius * 0.035, 0.25);
-            AddLine3D(target, point3D - vector3D2 * num5, point3D + vector3D2 * num5, num4 * 1.8, material);
-            AddLine3D(target, point3D - vector * num5, point3D + vector * num5, num4 * 1.8, material);
-            AddLine3D(target, point3D, point3D2, num4 * 1.3, material2);
+            AddHelperLine(viewport, target, point3D - vector3D2 * num5, point3D + vector3D2 * num5, num4 * 1.8, material);
+            AddHelperLine(viewport, target, point3D - vector * num5, point3D + vector * num5, num4 * 1.8, material);
+            // Use the sampled look-at coordinates, not the display-sized frustum endpoint.
+            var lookAt = actionCameraFrame.Target;
+            if (float.IsFinite(lookAt.X) && float.IsFinite(lookAt.Y) && float.IsFinite(lookAt.Z))
+            {
+                Point3D lookAtWorld = ToWorld(lookAt.X, lookAt.Y, lookAt.Z);
+                AddHelperDashedLine(viewport, target, point3D, lookAtWorld, Math.Max(1, num4 * 0.65), material2);
+                AddHelperDot(viewport, target, lookAtWorld, material2);
+            }
         }
     }
 
@@ -2442,9 +2451,9 @@ public partial class MainWindow : Window
         }
         float max = Math.Max(0.001f, _actionCamera.Clip.Info.Duration);
         int frame = Math.Clamp((int)MathF.Floor(Math.Clamp(time, 0f, max) * 60f + 0.0001f), 0, _cameraTrajectoryPoints.Length - 1);
-        DiffuseMaterial pathMaterial;
-        DiffuseMaterial startMaterial;
-        DiffuseMaterial material;
+        Material pathMaterial;
+        Material startMaterial;
+        Material material;
         double thickness;
         if (force || frame != _cameraTrajectoryDrawnFrame)
         {
@@ -2453,27 +2462,27 @@ public partial class MainWindow : Window
             _comparisonCameraTrajectory.Children.Clear();
             _cameraTrajectoryCursor.Children.Clear();
             _comparisonCameraTrajectoryCursor.Children.Clear();
-            pathMaterial = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(61, 190, 218)));
-            startMaterial = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(76, 210, 128)));
-            material = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(246, 190, 67)));
-            thickness = Math.Max(_sceneRadius * 0.0016, 0.018);
+            pathMaterial = HelperMaterial(_previewLineColor);
+            startMaterial = HelperMaterial(Color.FromRgb(76, 210, 128));
+            material = HelperMaterial(_previewCameraColor);
+            thickness = Math.Clamp(_previewLineScale * 0.75, 1, 3);
             if (CameraModeCombo.SelectedIndex == 0)
             {
-                Draw(_cameraTrajectory, _cameraTrajectoryCursor);
+                Draw(Viewport, _cameraTrajectory, _cameraTrajectoryCursor);
             }
             if (DualViewportCheck.IsChecked == true && ComparisonCameraModeCombo.SelectedIndex == 0)
             {
-                Draw(_comparisonCameraTrajectory, _comparisonCameraTrajectoryCursor);
+                Draw(ComparisonViewport, _comparisonCameraTrajectory, _comparisonCameraTrajectoryCursor);
             }
         }
-        void Draw(Model3DGroup path, Model3DGroup cursor)
+        void Draw(Viewport3D view, Model3DGroup path, Model3DGroup cursor)
         {
-            AddCameraTrajectoryMarker(path, _cameraTrajectoryPoints[0], thickness * 4.5, startMaterial);
+            AddHelperMarker(view, path, _cameraTrajectoryPoints[0], thickness, startMaterial);
             for (int i = 1; i <= frame; i++)
             {
-                AddLine3D(path, _cameraTrajectoryPoints[i - 1], _cameraTrajectoryPoints[i], thickness, pathMaterial);
+                AddHelperLine(view, path, _cameraTrajectoryPoints[i - 1], _cameraTrajectoryPoints[i], thickness, pathMaterial);
             }
-            AddCameraTrajectoryMarker(cursor, _cameraTrajectoryPoints[frame], thickness * 5.5, material);
+            AddHelperMarker(view, cursor, _cameraTrajectoryPoints[frame], thickness, material);
         }
     }
 
@@ -2971,6 +2980,7 @@ public partial class MainWindow : Window
             UpdateCamera();
             UpdateComparisonCamera();
         }
+        RefreshHelperView();
         if (_overlayDirty)
         {
             _overlayDirty = false;

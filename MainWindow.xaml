@@ -1,4 +1,4 @@
-<Window x:Class="DWOriginsAssetTool.MainWindow"
+﻿<Window x:Class="DWOriginsAssetTool.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:DWOriginsAssetTool"
@@ -155,9 +155,10 @@
               <CheckBox x:Name="DualViewportCheck" Content="双视口" Click="DualViewport_Changed" Margin="0,0,18,0" FontWeight="SemiBold" Foreground="#83CFF4" ToolTip="按需开启左右双视口；两边独立选择镜头模式并同步同一帧"/>
               <CheckBox x:Name="GridCheck" Content="网格 (G)" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
               <CheckBox x:Name="AxesCheck" Content="坐标轴" IsChecked="True" Click="ViewportOption_Changed" Margin="0,0,16,0"/>
-              <CheckBox x:Name="CameraGizmoCheck" Content="显示动画摄像机" Click="CameraGizmo_Changed" IsEnabled="False" ToolTip="自由镜头下显示动画摄像机的位置、朝向和视锥"/>
-              <CheckBox x:Name="CameraTrajectoryCheck" Content="镜头轨迹" Click="CameraTrajectory_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="自由镜头下显示整段摄像机运动路径；绿色为起点，红色为终点，黄色为当前帧"/>
+              <CheckBox x:Name="CameraGizmoCheck" Content="显示动画摄像机" Click="CameraGizmo_Changed" IsEnabled="False" ToolTip="自由镜头下显示动画摄像机的位置、视锥及实际注视点；灰蓝虚线末端的圆点为当前帧注视点"/>
+              <CheckBox x:Name="CameraTrajectoryCheck" Content="镜头轨迹" Click="CameraTrajectory_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="自由镜头下显示整段摄像机运动路径；绿色为起点，摄像机配色的十字为当前帧"/>
               <CheckBox x:Name="WeaponCheck" Content="显示武器" Click="WeaponCheck_Changed" IsEnabled="False" Margin="16,0,0,0" ToolTip="显示或隐藏快速预览加载的武器"/>
+              <Button Content="预览配色…" Click="PreviewAppearance_Click" Margin="16,0,0,0" Padding="8,2"/>
               <TextBlock x:Name="PreviewSummary" Visibility="Collapsed"/>
             </WrapPanel>
           </StackPanel>
@@ -172,7 +173,7 @@
             <!-- Reliable viewport sky layer. WPF may cull very large inside-facing
                  meshes on some GPUs, so the atmosphere itself is rendered behind
                  the transparent Viewport3D, while ground and helpers stay in 3D. -->
-            <Border Grid.Column="0" IsHitTestVisible="False">
+            <Border x:Name="PrimaryBackdrop" Grid.Column="0" IsHitTestVisible="False">
               <Border.Background>
                 <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
                   <GradientStop Color="#484A4B" Offset="0"/>
@@ -211,7 +212,7 @@
             <GridSplitter x:Name="ComparisonViewportSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                           Background="#344359" Visibility="Collapsed"/>
             <Grid Grid.Column="2" ClipToBounds="True" Background="Transparent">
-              <Border IsHitTestVisible="False">
+              <Border x:Name="ComparisonBackdrop" IsHitTestVisible="False">
                 <Border.Background>
                   <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
                     <GradientStop Color="#484A4B" Offset="0"/>
