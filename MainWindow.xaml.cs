@@ -2138,6 +2138,7 @@ public partial class MainWindow : Window
         float value3 = Vector3.Distance(tuple.Item1, tuple.Item2);
         float value4 = MathF.Atan2(actionCameraFrame.Forward.X, actionCameraFrame.Forward.Z) * 180f / (float)Math.PI;
         float value5 = MathF.Asin(Math.Clamp(actionCameraFrame.Forward.Y, -1f, 1f)) * 180f / (float)Math.PI;
+        double value8 = CameraRollDegrees(actionCameraFrame.Forward, actionCameraFrame.Up);
         string text = CameraModeCombo.SelectedIndex == 1
             ? "动画镜头数据"
             : "自由镜头 · 动画摄像机数据";
@@ -2145,7 +2146,7 @@ public partial class MainWindow : Window
         _cameraDataWindow?.SetMode(text);
         double value6 = VerticalToHorizontalFov(actionCameraFrame.FieldOfView, CameraViewportAspect);
         double value7 = 24.0 * CameraViewportAspect;
-        string text2 = $"帧 {(int)Math.Round(actionCameraFrame.Time * 60f)}  ·  {actionCameraFrame.Time:0.000}s / {_actionCamera.Clip.Info.Duration:0.000}s\n垂直 FOV {actionCameraFrame.FieldOfView:0.00}°\n水平 FOV {value6:0.00}°\n导出背板 {value7:0.00}×{24.0:0.00} mm\n距离 {value3:0.00} cm\n机位 ({tuple.Item1.X:0.00}, {tuple.Item1.Y:0.00}, {tuple.Item1.Z:0.00})\n目标 ({tuple.Item2.X:0.00}, {tuple.Item2.Y:0.00}, {tuple.Item2.Z:0.00})\nYaw {value4:0.00}°  ·  Pitch {value5:0.00}°\n速度：机位 {value:0.00} · 目标 {value2:0.00} cm/s";
+        string text2 = $"帧 {(int)Math.Round(actionCameraFrame.Time * 60f)}  ·  {actionCameraFrame.Time:0.000}s / {_actionCamera.Clip.Info.Duration:0.000}s\n垂直 FOV {actionCameraFrame.FieldOfView:0.00}°\n水平 FOV {value6:0.00}°\n导出背板 {value7:0.00}×{24.0:0.00} mm\n距离 {value3:0.00} cm\n机位 ({tuple.Item1.X:0.00}, {tuple.Item1.Y:0.00}, {tuple.Item1.Z:0.00})\n目标 ({tuple.Item2.X:0.00}, {tuple.Item2.Y:0.00}, {tuple.Item2.Z:0.00})\nPitch {value5:0.00}°  ·  Yaw {value4:0.00}°  ·  Roll {value8:0.00}°\n速度：机位 {value:0.00} · 目标 {value2:0.00} cm/s";
         CameraHudText.Text = text2;
         _cameraDataWindow?.ClearData();
         _cameraDataWindow?.AddLine(text2, "#D6DEE9", newline: false);
@@ -2278,30 +2279,38 @@ public partial class MainWindow : Window
         double num = Math.Max(0.001, _clip.Info.Duration);
         int num2 = Math.Max(1, (int)Math.Ceiling(num * 60.0));
         List<CameraCurvePoint> list = new List<CameraCurvePoint>(num2 + 1);
-        Vector3? vector = null;
-        Vector3? vector2 = null;
+        double? previousYaw = null;
+        double? previousRoll = null;
         for (int i = 0; i <= num2; i++)
         {
             double num3 = Math.Min(num, (double)i / 60.0);
             double? actionFov = null;
             double? actionDistance = null;
-            double? cameraSpeed = null;
-            double? targetSpeed = null;
+            double? positionX = null;
+            double? positionY = null;
+            double? positionZ = null;
+            double? pitch = null;
+            double? yaw = null;
+            double? roll = null;
             if ((object)_actionCamera != null)
             {
                 ActionCameraFrame actionCameraFrame = ActionCameraCatalog.Sample(_actionCamera, (float)num3);
                 (Vector3, Vector3, Vector3) tuple = G1Parsers.SampleCameraTrack(_actionCamera.TransformTrack, actionCameraFrame.Time);
                 actionFov = actionCameraFrame.FieldOfView;
                 actionDistance = Vector3.Distance(tuple.Item1, tuple.Item2);
-                if (vector.HasValue)
-                {
-                    cameraSpeed = Vector3.Distance(vector.Value, tuple.Item1) * 60f;
-                    targetSpeed = Vector3.Distance(vector2.Value, tuple.Item2) * 60f;
-                }
-                vector = tuple.Item1;
-                vector2 = tuple.Item2;
+                positionX = tuple.Item1.X;
+                positionY = tuple.Item1.Y;
+                positionZ = tuple.Item1.Z;
+                pitch = MathF.Asin(Math.Clamp(actionCameraFrame.Forward.Y, -1f, 1f)) * 180f / MathF.PI;
+                yaw = MathF.Atan2(actionCameraFrame.Forward.X, actionCameraFrame.Forward.Z) * 180f / MathF.PI;
+                roll = CameraRollDegrees(actionCameraFrame.Forward, actionCameraFrame.Up);
+                yaw = UnwrapAngleDegrees(yaw.Value, previousYaw);
+                roll = UnwrapAngleDegrees(roll.Value, previousRoll);
+                previousYaw = yaw;
+                previousRoll = roll;
             }
-            list.Add(new CameraCurvePoint(num3, actionFov, actionDistance, cameraSpeed, targetSpeed));
+            list.Add(new CameraCurvePoint(num3, actionFov, actionDistance,
+                positionX, positionY, positionZ, pitch, yaw, roll));
         }
         double[] keyTimes = (((object)_actionCamera == null) ? Array.Empty<double>() : (from x in ActionCameraCatalog.KeyframeTimes(_actionCamera).Select((Func<float, double>)((float x) => x)).Distinct()
                                                                                         orderby x
@@ -2312,6 +2321,30 @@ public partial class MainWindow : Window
             ? "该动作没有关联的独立动画镜头。"
             : "镜头曲线来自关联的 Camera G1A。";
         return new CameraCurveSnapshot(title, subtitle, num, _playbackTime, list, events, keyTimes);
+    }
+
+    private static double UnwrapAngleDegrees(double angle, double? previous)
+    {
+        if (!previous.HasValue) return angle;
+        while (angle - previous.Value > 180.0) angle -= 360.0;
+        while (angle - previous.Value < -180.0) angle += 360.0;
+        return angle;
+    }
+
+    private static double CameraRollDegrees(Vector3 forward, Vector3 up)
+    {
+        if (forward.LengthSquared() < 1e-8f || up.LengthSquared() < 1e-8f) return 0.0;
+        forward = Vector3.Normalize(forward);
+        up -= forward * Vector3.Dot(up, forward);
+        if (up.LengthSquared() < 1e-8f) return 0.0;
+        up = Vector3.Normalize(up);
+        var referenceUp = Vector3.UnitY - forward * Vector3.Dot(Vector3.UnitY, forward);
+        if (referenceUp.LengthSquared() < 1e-8f)
+            referenceUp = Vector3.UnitZ - forward * Vector3.Dot(Vector3.UnitZ, forward);
+        referenceUp = Vector3.Normalize(referenceUp);
+        var sine = Vector3.Dot(Vector3.Cross(referenceUp, up), forward);
+        var cosine = Math.Clamp(Vector3.Dot(referenceUp, up), -1f, 1f);
+        return Math.Atan2(sine, cosine) * 180.0 / Math.PI;
     }
 
     private IEnumerable<CameraCurveEvent> BuildCameraCurveEvents()
